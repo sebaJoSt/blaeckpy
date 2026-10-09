@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blaeckpy"
-version = "0.0.0"
+version = "1.0.0.dev0"
 description = "The Python counterpart of the blaeck Arduino library: signals, entities and commands over the blaeck protocol"
 readme = "README.md"
 authors = [
