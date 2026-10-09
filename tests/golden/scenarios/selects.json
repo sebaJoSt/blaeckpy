@@ -1,0 +1,134 @@
+{
+  "description": "Selects and enum sensors, whose index is a byte, and bool and text sensors: their entries, the values a host may set, and changes the sketch makes, held back by the 100 ms minimum interval.",
+  "board": {
+    "name": "Modes"
+  },
+  "signals": [
+    {
+      "name": "Status",
+      "type": "str",
+      "value": "Idle"
+    },
+    {
+      "name": "Running",
+      "type": "bool",
+      "value": false
+    }
+  ],
+  "properties": [
+    {
+      "kind": "select",
+      "name": "Mode",
+      "value": 0,
+      "options": [
+        "Auto",
+        "Manual",
+        "Off"
+      ],
+      "icon": "mdi:tune"
+    },
+    {
+      "kind": "sensor",
+      "name": "Phase",
+      "value": 1,
+      "options": [
+        "Filling",
+        "Heating",
+        "Draining"
+      ],
+      "display_name": "Wash phase"
+    },
+    {
+      "kind": "sensor",
+      "name": "DoorOpen",
+      "type": "bool",
+      "value": true,
+      "device_class": "door"
+    },
+    {
+      "kind": "sensor",
+      "name": "LastError",
+      "type": "str",
+      "value": "none",
+      "category": "diagnostic"
+    },
+    {
+      "kind": "sensor",
+      "name": "StatusText",
+      "signal": "Status"
+    },
+    {
+      "kind": "sensor",
+      "name": "RunningNow",
+      "signal": "Running"
+    }
+  ],
+  "steps": [
+    {
+      "command": "<BLAECK.GET_DEVICES>"
+    },
+    {
+      "command": "<BLAECK.ENTITIES_START>"
+    },
+    {
+      "command": "<Mode,1>"
+    },
+    {
+      "command": "<Mode,Off>"
+    },
+    {
+      "command": "<Mode,3>"
+    },
+    {
+      "command": "<Mode,off>"
+    },
+    {
+      "command": "<Mode,1.0>"
+    },
+    {
+      "command": "<Mode>"
+    },
+    {
+      "command": "<Phase,2>"
+    },
+    {
+      "command": "<DoorOpen,0>"
+    },
+    {
+      "set_property": "Phase",
+      "value": 2
+    },
+    {
+      "set_property": "DoorOpen",
+      "value": false
+    },
+    {
+      "set_property": "LastError",
+      "value": "E42: <overheat>"
+    },
+    {
+      "set_signal": "Status",
+      "value": "Heating"
+    },
+    {
+      "set_signal": "Running",
+      "value": true
+    },
+    {
+      "advance_ms": 100
+    },
+    {
+      "set_property": "Phase",
+      "value": 0
+    },
+    {
+      "advance_ms": 50
+    },
+    {
+      "advance_ms": 50
+    },
+    {
+      "command": "<BLAECK.WRITE_ENTITIES>"
+    }
+  ]
+}

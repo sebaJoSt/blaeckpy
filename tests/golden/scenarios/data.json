@@ -1,0 +1,39 @@
+{
+  "description": "Data frames: the four value types, interval and on-change reporting, micros timestamps, WRITE_DATA, and the data start and stop commands.",
+  "board": {"name": "Logger"},
+  "timestamp_mode": "micros",
+  "signals": [
+    {"name": "Temperature", "type": "float", "value": 21.5},
+    {"name": "Counter", "type": "int", "value": 9007199254740993},
+    {"name": "Status", "type": "str", "value": "Idle"},
+    {"name": "Door", "type": "bool", "value": false, "write_at_interval": "off", "write_on_change": "any", "min_interval_ms": 0},
+    {"name": "Pressure", "type": "float", "value": 1.0, "write_at_interval": {"on_change": 0.5}},
+    {"name": "Level", "type": "int", "value": 10, "write_on_change": 5, "min_interval_ms": 1000}
+  ],
+  "steps": [
+    {"command": "<BLAECK.GET_DEVICES>"},
+    {"command": "<BLAECK.WRITE_DATA>"},
+    {"command": "<BLAECK.DATA_START>"},
+    {"advance_ms": 10},
+    {"command": "<BLAECK.INTERVAL_START,1000>"},
+    {"advance_ms": 1000},
+    {"set_signal": "Temperature", "value": 22.25},
+    {"set_signal": "Status", "value": "Running, <hot>\n"},
+    {"set_signal": "Door", "value": true},
+    {"set_signal": "Pressure", "value": 1.25},
+    {"advance_ms": 1000},
+    {"set_signal": "Pressure", "value": 1.75},
+    {"set_signal": "Level", "value": 16},
+    {"advance_ms": 500},
+    {"set_signal": "Level", "value": 30},
+    {"advance_ms": 600},
+    {"advance_ms": 400},
+    {"write_all": true},
+    {"command": "<BLAECK.INTERVAL_STOP>"},
+    {"advance_ms": 2000},
+    {"command": "<BLAECK.DATA_STOP>"},
+    {"set_signal": "Door", "value": false},
+    {"command": "<BLAECK.DATA_START>"},
+    {"command": "<#5:BLAECK.WRITE_DATA>"}
+  ]
+}

@@ -1,0 +1,44 @@
+{
+  "description": "The device list and the entity list: identity, a sub-device, every property kind with presentation, events, buttons and a plain command.",
+  "board": {"name": "Greenhouse", "hw_version": "Raspberry Pi 5", "fw_version": "1.0"},
+  "signals": [
+    {"name": "Temperature", "type": "float", "value": 21.5},
+    {"name": "Count", "type": "int", "value": -7},
+    {"name": "Status", "type": "str", "value": "Idle"},
+    {"name": "Running", "type": "bool", "value": true}
+  ],
+  "properties": [
+    {"kind": "sensor", "name": "Temperature", "signal": "Temperature", "unit": "°C",
+     "device_class": "temperature", "state_class": "measurement", "display_precision": 1},
+    {"kind": "number_input", "name": "Setpoint", "type": "float", "value": 20.0,
+     "min": 10.0, "max": 30.0, "step": 0.5, "unit": "°C", "mode": "slider", "icon": "mdi:thermometer"},
+    {"kind": "number_input", "name": "Level", "type": "int", "value": 3, "min": 0, "max": 10,
+     "mode": "box", "category": "config"},
+    {"kind": "switch", "name": "Heater", "value": true, "display_name": "Heater on"},
+    {"kind": "text_input", "name": "Label", "value": "lab", "max_length": 32, "mode": "password"},
+    {"kind": "sensor", "name": "Energy", "type": "float", "value": 1.25, "unit": "kWh",
+     "state_class": "total_increasing", "category": "diagnostic", "disabled_by_default": true,
+     "force_update": true}
+  ],
+  "events": [
+    {"name": "Alarms", "types": ["Overheat", "Dry run"], "display_name": "Alarm", "icon": "mdi:alert",
+     "category": "config"}
+  ],
+  "buttons": [
+    {"name": "Reboot", "device_class": "restart", "category": "config"},
+    {"name": "PrintStatus"}
+  ],
+  "commands": ["MOTOR"],
+  "devices": [
+    {"name": "Pump controller", "hw_version": "Arduino Mega 2560", "fw_version": "2.1",
+     "signals": [{"name": "Flow", "type": "float", "value": 0.0}],
+     "properties": [{"kind": "number_input", "name": "PumpSpeed", "type": "int", "value": 0,
+                     "min": 0, "max": 100, "step": 1, "unit": "%"}],
+     "events": [{"name": "Alarms", "types": ["restarted"]}]}
+  ],
+  "steps": [
+    {"command": "<#1:BLAECK.GET_DEVICES>"},
+    {"command": "<#2:BLAECK.WRITE_ENTITIES>"},
+    {"command": "<BLAECK.GET_DEVICES>"}
+  ]
+}

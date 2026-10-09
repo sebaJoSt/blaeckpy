@@ -1,0 +1,26 @@
+{
+  "description": "A sub-device going missing, answering again and restarting, and a command to it while it is missing.",
+  "board": {"name": "Greenhouse"},
+  "signals": [{"name": "Temperature", "type": "float", "value": 21.0}],
+  "devices": [
+    {"name": "Pump controller", "fw_version": "1.0",
+     "signals": [{"name": "Flow", "type": "float", "value": 2.5}],
+     "properties": [{"kind": "number_input", "name": "PumpSpeed", "type": "int", "value": 0, "min": 0, "max": 100}],
+     "events": [{"name": "Alarms", "types": ["restarted"]}]}
+  ],
+  "steps": [
+    {"command": "<BLAECK.GET_DEVICES>"},
+    {"command": "<BLAECK.DATA_START>"},
+    {"command": "<BLAECK.ENTITIES_START>"},
+    {"mark_missing": "Pump controller"},
+    {"command": "<BLAECK.GET_DEVICES>"},
+    {"command": "<PumpSpeed,50>"},
+    {"command": "<BLAECK.WRITE_DATA>"},
+    {"mark_present": "Pump controller"},
+    {"command": "<PumpSpeed,50>"},
+    {"write_restarted": "Pump controller"},
+    {"write_event": ["Alarms", "restarted"], "device": "Pump controller"},
+    {"command": "<BLAECK.GET_DEVICES>"},
+    {"command": "<BLAECK.WRITE_DATA>"}
+  ]
+}
