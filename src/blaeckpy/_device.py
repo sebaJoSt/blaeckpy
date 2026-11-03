@@ -470,13 +470,17 @@ class Blaeck(_DeviceBase):
     def __exit__(self, *exc) -> None:
         self.close()
 
-    def tick(self, timestamp: int | None = None, timeout: float = 0.0) -> None:
+    def tick(self, timeout: float = 0.0, *, timestamp: int | None = None) -> None:
         """Reads a command and answers it, then sends what is due.
 
-        With ``timeout`` (seconds, as paho-mqtt's ``loop(timeout=)``), it then waits up to that
+        With ``timeout`` (seconds, as paho-mqtt's ``loop(timeout)``), it then waits up to that
         long, answering commands as they arrive and sending what falls due in the meantime on
-        time. ``timeout=0``, the default, never waits, as in blaeck. A timestamp belongs to the
-        moment of the call, so it can't be combined with a timeout.
+        time. ``timeout=0``, the default, never waits, as in blaeck.
+
+        ``timestamp`` stamps the data frames this call sends with a time of the script's own,
+        such as when the values were measured, in microseconds in the timestamp mode's epoch.
+        By name only, so a bare number is always the timeout. It belongs to the moment of the
+        call, so it can't be combined with a timeout.
         """
         if timeout and timestamp is not None:
             raise ValueError("pass a timestamp or a timeout, not both")

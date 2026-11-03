@@ -187,6 +187,14 @@ def test_a_timestamp_and_a_timeout_dont_go_together():
         Blaeck().tick(timestamp=5, timeout=0.1)
 
 
+def test_a_bare_number_is_the_timeout():
+    start = time.monotonic()
+    Blaeck().tick(0.05)
+    assert time.monotonic() - start >= 0.04
+    with pytest.raises(TypeError):
+        Blaeck().tick(0, 5)
+
+
 def test_the_host_gets_no_answer_to_a_terminals_command(server):
     device, ran = Blaeck("Bench"), []
     device.on_command("MOTOR", lambda *p: ran.append(p))
