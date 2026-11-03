@@ -362,3 +362,88 @@ def test_a_change_on_a_missing_device_doesnt_keep_tick_from_waiting_and_goes_out
     pump.mark_present()
     device.tick()
     assert values()[-1] == {0: 2.0}
+
+
+def clock_device():
+    device, port = Blaeck(), Port()
+    speed = device.add_signal("Speed", 1.0, write_on_change=0.0, min_interval_ms=0)
+    device.begin(port)
+    port.incoming += b"<BLAECK.GET_DEVICES>"
+    device.tick()
+    return device, port, speed
+
+
+def data_frames(port):
+    frames = _decode.Decoder().feed(bytes(port.outgoing))
+    return [f.body for f in frames if isinstance(f, _decode.Frame) and f.key == 0xD3]
+
+
+@pytest.mark.parametrize("failure", ["raises", "negative", "too big", "not a number"])
+def test_while_the_clock_fails_no_data_goes_out_and_a_change_goes_out_once_it_works(failure, caplog):
+    device, port, speed = clock_device()
+    broken = [True]
+
+    def clock():
+        if not broken[0]:
+            return 5
+        if failure == "raises":
+            raise OSError("no RTC")
+        return {"negative": -1, "too big": 2**64, "not a number": "soon"}[failure]
+
+    device.set_timestamp_mode("unix", clock=clock)
+    port.incoming += b"<BLAECK.DATA_START>"
+    with caplog.at_level(logging.ERROR, logger="blaeckpy"):
+        device.tick()
+        speed.value = 2.0
+        passes = device._pass
+        device.tick(timeout=0.1)
+    assert device._pass - passes < 100  # With nothing to select on it polls every 10 ms.
+    assert data_frames(port) == []
+    assert len([r for r in caplog.records if "clock" in r.getMessage()]) == 1
+
+    broken[0] = False
+    device.tick()
+    frames = data_frames(port)
+    assert frames[-1].values == {0: 2.0} and frames[-1].timestamp == 5
+
+
+def test_a_clock_that_fails_again_after_working_is_logged_again(caplog):
+    device, port, speed = clock_device()
+    readings = iter([5])
+
+    def clock():
+        return next(readings, None) or 1 / 0
+
+    device.set_timestamp_mode("unix", clock=clock)
+    port.incoming += b"<BLAECK.DATA_START>"
+    device.tick()
+    assert len(data_frames(port)) == 1
+    speed.value = 2.0
+    with caplog.at_level(logging.ERROR, logger="blaeckpy"):
+        device.tick()
+        readings = iter([6])
+        device.tick()
+        speed.value = 3.0
+        device.tick()
+    assert len([r for r in caplog.records if "clock" in r.getMessage()]) == 2
+
+
+def test_the_clock_is_read_only_when_a_frame_goes_out():
+    device, port, speed = clock_device()
+    calls = []
+    device.set_timestamp_mode("unix", clock=lambda: calls.append(1) or 5)
+    for _ in range(100):
+        device.tick()
+    assert calls == []
+    port.incoming += b"<BLAECK.WRITE_DATA>"
+    device.tick()
+    assert len(calls) == 1 and data_frames(port)[-1].timestamp == 5
+
+
+def test_a_request_while_the_clock_fails_is_acked_and_sends_nothing():
+    device, port, _ = clock_device()
+    device.set_timestamp_mode("unix", clock=lambda: 1 / 0)
+    assert ack_reason(device, port, "<BLAECK.WRITE_DATA>") == 0
+    assert data_frames(port) == []
+    device.write_all()  # From the script too: logged, not raised.
+    assert data_frames(port) == []

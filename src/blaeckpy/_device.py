@@ -259,8 +259,7 @@ class SubDevice(_DeviceBase):
     def write_all(self, timestamp: int | None = None) -> None:
         """Sends this device's signals now."""
         core = self._core
-        core._write_data(0, [s for s in core._signals if s.device_id == self._id],
-                         core._now() if timestamp is None else timestamp)
+        core._write_data(0, [s for s in core._signals if s.device_id == self._id], timestamp)
 
 
 class Blaeck(_DeviceBase):
@@ -289,6 +288,7 @@ class Blaeck(_DeviceBase):
         self._hinted = False
         self._timestamp_mode = TimestampMode.NONE
         self._timestamp_clock: Callable[[], int] | None = None
+        self._clock_failing = False
 
         # What the host switched on and off. A device starts silent.
         self._data_stopped = True
@@ -321,7 +321,10 @@ class Blaeck(_DeviceBase):
     def set_timestamp_mode(self, mode: TimestampMode | str,
                            clock: Callable[[], int] | None = None) -> None:
         """How data frames are timestamped: "none", "micros" (since the script started) or "unix"
-        (the computer's clock). ``clock`` returns microseconds, replacing the default."""
+        (the computer's clock). ``clock`` returns microseconds, replacing the default. It is read
+        when a data frame goes out. While it raises or returns what no frame can carry, no data
+        goes out, since a time can't be vouched for; the failure is logged, and a signal that
+        changed goes out once the clock works again."""
         try:
             self._timestamp_mode = TimestampMode(mode)
         except ValueError:
@@ -669,7 +672,10 @@ class Blaeck(_DeviceBase):
         if self._may_write_data():
             for sig in self._signals:
                 r = sig._reporting
-                if (r is not None and r.immediate and not self._is_missing(sig.device_id)
+                # While the clock fails a write is refused, so it isn't due; the caller's timeout
+                # or the next interval tries again.
+                if (r is not None and r.immediate and not self._clock_failing
+                        and not self._is_missing(sig.device_id)
                         and changed(sig.type, sig.value, r, r.change_delta)):
                     times.append(r.last_write_ms + r.min_interval_ms if r.valid else now)
         if self._may_write_entities():
@@ -692,7 +698,7 @@ class Blaeck(_DeviceBase):
 
     def write_all(self, timestamp: int | None = None) -> None:
         """Sends every signal now."""
-        self._write_all(0, self._now() if timestamp is None else timestamp)
+        self._write_all(0, timestamp)
 
     # ----- what read() does -----
 
@@ -752,7 +758,7 @@ class Blaeck(_DeviceBase):
             self._ack(cmd, _ACK_OK)
             self._requested = True
             try:
-                self._write_all(msg_id, self._now())
+                self._write_all(msg_id, None)
             finally:
                 self._requested = False
         elif name == "BLAECK.GET_DEVICES":
@@ -915,13 +921,25 @@ class Blaeck(_DeviceBase):
 
     # ----- data -----
 
-    def _now(self) -> int:
-        return _clock.timestamp(self._timestamp_mode, self._clock, self._timestamp_clock)
+    def _now(self) -> int | None:
+        """The timestamp a data frame carries now; None when the script's clock failed, logged the
+        first time in a row: like any other function of the script's, it must not stop the device."""
+        try:
+            value = _clock.timestamp(self._timestamp_mode, self._clock, self._timestamp_clock)
+            if not 0 <= value < 2**64:
+                raise ValueError(f"{value} does not fit a timestamp")
+        except Exception:
+            if not self._clock_failing:
+                self._clock_failing = True
+                log.exception("The timestamp clock failed; no data goes out until it works again")
+            return None
+        self._clock_failing = False
+        return value
 
     def _may_write_data(self) -> bool:
         return (not self._data_stopped or self._answering) and self._ready()
 
-    def _write_all(self, msg_id: int, timestamp: int) -> None:
+    def _write_all(self, msg_id: int, timestamp: int | None) -> None:
         if not self._signals:
             return
         if self._before_write is not None:
@@ -932,11 +950,9 @@ class Blaeck(_DeviceBase):
         if self._is_missing(signal.device_id):
             log.debug("write() dropped for %r: its device is marked missing", signal.name)
             return
-        self._write_data(0, [signal], self._now() if timestamp is None else timestamp)
+        self._write_data(0, [signal], timestamp)
 
     def _write_if_due(self, timestamp: int | None) -> None:
-        if timestamp is None:
-            timestamp = self._now()
         now = self._clock.millis()
         elapsed = now - self._last_interval_ms
         initial = self._timed and self._timed_first
@@ -972,7 +988,7 @@ class Blaeck(_DeviceBase):
         self._write_data(0, selected, timestamp, interval_report)
         self._write_changed_properties()
 
-    def _write_data(self, msg_id: int, selected: list[Signal], timestamp: int,
+    def _write_data(self, msg_id: int, selected: list[Signal], timestamp: int | None,
                     interval_report: bool = False) -> None:
         if not self._may_write_data():
             return
@@ -980,6 +996,10 @@ class Blaeck(_DeviceBase):
         chosen = {id(sig) for sig in selected if not self._is_missing(sig.device_id)}
         if not chosen:
             return
+        if timestamp is None:
+            timestamp = self._now()
+            if timestamp is None:
+                return
         flags = frames.FIRST_AFTER_RESTART if self._restart_flag else 0
         if self._requested:
             flags |= frames.ANSWERS_WRITE_DATA

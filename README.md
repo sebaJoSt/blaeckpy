@@ -121,7 +121,8 @@ A few things to know:
   with a blank entry raises `ValueError` or `TypeError` where it was written, instead of being
   reported on a debug stream.
 - **A callback that raises doesn't stop the device.** The exception is logged with its traceback
-  on the `blaeckpy` logger, `tick()` goes on, and the host still gets its answer.
+  on the `blaeckpy` logger, `tick()` goes on, and the host still gets its answer. While a
+  `clock=` fails, no data goes out; a signal that changed goes out once it works again.
 - **One thread.** A device and what it made are used from the thread that calls `tick()`. To
   feed values from another thread, hand them over, with a `queue.Queue` say, and set them in the
   loop.
