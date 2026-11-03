@@ -213,6 +213,9 @@ class Blaeck(_DeviceBase):
     """A device a host such as Loggbok logs and controls, over serial or TCP.
 
     Declare signals, then :meth:`begin` with an opened port and call :meth:`tick` in a loop.
+
+    Not thread-safe: use a device, and what it made, from the thread that calls tick(). Hand
+    values from other threads over, with a queue.Queue say, and set them in the loop.
     """
 
     def __init__(self, name: str = "Unnamed", *, hw_version: str = "n/a", fw_version: str = "n/a"):

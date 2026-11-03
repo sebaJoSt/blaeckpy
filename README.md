@@ -117,6 +117,9 @@ A few things are Python's own:
   reported on a debug stream.
 - **A callback that raises doesn't stop the device.** The exception is logged with its traceback
   on the `blaeckpy` logger, `tick()` goes on, and the host gets the answer blaeck would send.
+- **One thread.** A device and what it made are used from the thread that calls `tick()`. To
+  feed values from another thread, hand them over, with a `queue.Queue` say, and set them in the
+  loop.
 - **Time is in seconds** unless a name says otherwise: `tick(timeout=0.1)`, but blaeck's
   millisecond values keep their unit and say so, as in `min_interval_ms=1000`.
 - **The device list names blaeckpy** and its own version, so Loggbok and error reports show which
