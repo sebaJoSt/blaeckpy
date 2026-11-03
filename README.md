@@ -108,6 +108,9 @@ A few things are Python's own:
   millisecond values keep their unit and say so, as in `min_interval_ms=1000`.
 - **The device list names blaeckpy** and its own version, so Loggbok and error reports show which
   library a device runs.
+- **A command may be up to 1023 characters,** where blaeck's default buffer takes 127: room for a
+  255-byte text, the most Home Assistant holds, even with every byte percent-encoded. The device
+  list tells a host the limit.
 
 ## Examples
 

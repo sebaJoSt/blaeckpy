@@ -255,9 +255,16 @@ class Blaeck(_DeviceBase):
         self._any_command: Callable | None = None
         self._catalog_dirty = False
 
-    def set_timestamp_mode(self, mode: TimestampMode, clock: Callable[[], int] | None = None) -> None:
-        """How data frames are timestamped; ``clock`` returns microseconds, replacing the default."""
-        self._timestamp_mode = TimestampMode(mode)
+    def set_timestamp_mode(self, mode: TimestampMode | str,
+                           clock: Callable[[], int] | None = None) -> None:
+        """How data frames are timestamped: "none", "micros" (since the script started) or "unix"
+        (the computer's clock). ``clock`` returns microseconds, replacing the default."""
+        try:
+            self._timestamp_mode = TimestampMode(mode)
+        except ValueError:
+            raise ValueError(f"timestamp mode {mode!r} is not one of none, micros, unix") from None
+        if clock is not None and not callable(clock):
+            raise TypeError("clock is a function returning microseconds")
         self._timestamp_clock = clock
 
 
@@ -833,7 +840,7 @@ class Blaeck(_DeviceBase):
         hash_ = schema_hash([(None if s.device_id == 0 else self._device(s.device_id).name,
                               s.name, s.unit, s.dtype) for s in ordered])
         self._send(frames.data(values, schema_hash=hash_, flags=flags,
-                               timestamp_mode=self._timestamp_mode,
+                               timestamp_mode=_clock.WIRE[self._timestamp_mode],
                                timestamp=timestamp if has_ts else None, message_id=msg_id))
         sent_at = self._clock.millis()
         for s in self._signals:

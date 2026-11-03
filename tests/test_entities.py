@@ -215,3 +215,24 @@ def test_clearing_lets_a_new_set_be_declared_and_old_handles_say_so():
         device.add_sensor("Room", 2.0)
     device.clear_all_sensors()
     device.add_sensor("Room", 2.0)
+
+
+def test_a_255_byte_text_fits_a_command_even_fully_percent_encoded():
+    from blaeckpy.protocol import _decode
+    device, port = Blaeck(), Port()
+    label = device.add_text_input("Label", max_length=255)
+    device.on_command("Long", lambda *p: None)
+    device.begin(port)
+    text = "é" * 127 + "x"  # 255 bytes
+    encoded = "".join(f"%{b:02X}" for b in text.encode())
+    assert ack_reason(device, port, f"<#65535:Label,{encoded}>") == 0
+    assert label.value == text
+    # One character more than the device list advertises is refused as cut off.
+    port.outgoing.clear()
+    port.incoming += b"<BLAECK.GET_DEVICES>"
+    device.tick()
+    advertised = [f.body for f in _decode.Decoder().feed(bytes(port.outgoing))
+                  if isinstance(f, _decode.Frame) and isinstance(f.body, _decode.DeviceList)][0]
+    assert advertised.command_payload_max == 1023
+    assert ack_reason(device, port, "<Long," + "x" * 1018 + ">") == 0  # 1023 characters
+    assert ack_reason(device, port, "<Long," + "x" * 1019 + ">") == 7

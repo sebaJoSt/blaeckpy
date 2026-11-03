@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-#: Characters a command may have between < and >, as blaeck's default buffer holds them. The
-#: device list advertises one less.
-COMMAND_MAX_CHARS = 128
+#: Characters a command buffer holds, the terminator counted as in blaeck, so the device list
+#: advertises one less: 1023. blaeck's default is 128, a microcontroller's RAM budget that fits a
+#: 32-byte text percent-encoded; here a 255-byte text, the most Home Assistant holds, fits even
+#: with every byte encoded, along with its name and a #id: prefix.
+COMMAND_MAX_CHARS = 1024
 PARAM_MAX = 10
 
 

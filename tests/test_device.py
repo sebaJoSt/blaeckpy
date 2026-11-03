@@ -112,3 +112,18 @@ def test_a_signal_brings_its_unit():
 def test_parameters_are_decoded_then_trimmed(raw, params):
     from blaeckpy._commands import parse
     assert parse(raw, False).params == params
+
+
+@pytest.mark.parametrize("mode", ["none", "micros", "unix"])
+def test_timestamp_modes_take_enums_or_strings(mode):
+    from blaeckpy import TimestampMode
+    device = Blaeck()
+    device.set_timestamp_mode(mode)
+    device.set_timestamp_mode(TimestampMode(mode), clock=lambda: 5)
+
+
+def test_an_unknown_timestamp_mode_is_refused():
+    with pytest.raises(ValueError):
+        Blaeck().set_timestamp_mode("rtc")
+    with pytest.raises(TypeError):
+        Blaeck().set_timestamp_mode("unix", clock=5)

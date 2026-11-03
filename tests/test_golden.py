@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 import blaeckpy
-from blaeckpy import _device
+from blaeckpy import _commands, _device
 from blaeckpy._signal import ALWAYS, ANY_CHANGE, OFF, OnChange
 from blaeckpy.protocol import _decode
 
@@ -240,6 +240,8 @@ def test_scenario_sends_what_blaeck_sends(path, monkeypatch):
         pytest.skip("needs " + ", ".join(missing))
     monkeypatch.setattr(_device, "LIBRARY_NAME", BLAECK_LIBRARY[0])
     monkeypatch.setattr(_device, "LIBRARY_VERSION", BLAECK_LIBRARY[1])
+    # blaeck's default command buffer, which its device list advertises.
+    monkeypatch.setattr(_commands, "COMMAND_MAX_CHARS", 128)
 
     expected = blaeck_frames(path.stem)
     actual = play(scenario)

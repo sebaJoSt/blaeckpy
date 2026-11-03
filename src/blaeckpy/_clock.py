@@ -4,17 +4,21 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable
-from enum import IntEnum
+from enum import StrEnum
 
 
-class TimestampMode(IntEnum):
-    """How data frames are timestamped. The values are the protocol's."""
+class TimestampMode(StrEnum):
+    """How data frames are timestamped. Strings work too: "none", "micros", "unix"."""
 
-    NONE = 0
+    NONE = "none"
     #: Microseconds since the device started, from a monotonic clock.
-    MICROS = 1
+    MICROS = "micros"
     #: Microseconds since 1970-01-01 UTC, from the system clock unless a clock is given.
-    UNIX = 2
+    UNIX = "unix"
+
+
+# What a data frame says the mode is.
+WIRE = {TimestampMode.NONE: 0, TimestampMode.MICROS: 1, TimestampMode.UNIX: 2}
 
 
 class Clock:
