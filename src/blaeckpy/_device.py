@@ -27,13 +27,179 @@ _ACK_TRUNCATED = 7
 log = logging.getLogger("blaeckpy")
 
 
-class Blaeck:
+class _DeviceBase:
+    """What the board and each sub-device declare: signals, inputs, sensors, events, buttons and
+    plain commands. A sub-device's are listed under it; names a host sends stay unique on the
+    whole board."""
+
+    _core: "Blaeck"
+    _id: int
+
+    # ----- registration -----
+
+    def add_signal(self, name: str, type_or_initial, initial=None, *, unit: str | None = None,
+                   write_at_interval=ALWAYS, write_on_change: float | None = None,
+                   min_interval_ms: int = 100) -> Signal:
+        """A value the device logs: ``add_signal("T", float)``, ``add_signal("T", float, 21.5)``
+        or ``add_signal("T", 21.5)``. ``unit`` in Home Assistant's spelling, such as "°C"."""
+        name = check_name(name, "signal")
+        if any(s.name == name and s.device_id == self._id for s in self._core._signals):
+            raise ValueError(f"signal {name!r} exists already")
+        type_, value = type_and_value(type_or_initial, initial)
+        signal = Signal(self._core, self._id, name, type_, value, write_at_interval, write_on_change,
+                        min_interval_ms, check_unit(unit))
+        self._core._signals.append(signal)
+        return signal
+
+    # ----- entities: what a host shows and controls -----
+
+    def add_number_input(self, name: str, type_or_initial, initial=None, *, min=None, max=None,
+                         step=None, mode=None, unit=None, display_name=None, icon=None,
+                         device_class=None, state_class=None, display_precision=None,
+                         category="none", disabled_by_default=False, force_update=False,
+                         write_on_change: float = 0.0, min_interval_ms: int = 100) -> NumberInput:
+        """A number a host sets, within ``min`` and ``max`` and on ``step`` if given."""
+        name = self._core._host_name(name, "input")
+        presentation = Presentation(number=True, unit=unit, display_name=display_name, icon=icon,
+                                    device_class=device_class, state_class=state_class,
+                                    display_precision=display_precision, category=category,
+                                    disabled_by_default=disabled_by_default, force_update=force_update)
+        return self._core._add_property(NumberInput(self._core, self._id, name, type_or_initial, initial, min=min, max=max,
+                                              step=step, mode=mode, presentation=presentation,
+                                              write_on_change=write_on_change,
+                                              min_interval_ms=min_interval_ms))
+
+    def add_switch(self, name: str, initial: bool = False, *, display_name=None, icon=None,
+                   device_class=None, category="none", disabled_by_default=False,
+                   force_update=False, min_interval_ms: int = 100) -> Switch:
+        name = self._core._host_name(name, "switch")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default, force_update=force_update)
+        return self._core._add_property(Switch(self._core, self._id, name, initial, presentation=presentation,
+                                         min_interval_ms=min_interval_ms))
+
+    def add_select(self, name: str, index: int = 0, *, options, display_name=None, icon=None,
+                   device_class=None, category="none", disabled_by_default=False,
+                   force_update=False, min_interval_ms: int = 100) -> Select:
+        """One of ``options``, held as its index; a host sends the index or the option's name."""
+        name = self._core._host_name(name, "select")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default, force_update=force_update)
+        return self._core._add_property(Select(self._core, self._id, name, index, options=options,
+                                         presentation=presentation, min_interval_ms=min_interval_ms))
+
+    def add_text_input(self, name: str, initial: str = "", *, max_length: int = 255, mode=None,
+                       display_name=None, icon=None, device_class=None, category="none",
+                       disabled_by_default=False, force_update=False,
+                       min_interval_ms: int = 100) -> TextInput:
+        name = self._core._host_name(name, "text input")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default, force_update=force_update)
+        return self._core._add_property(TextInput(self._core, self._id, name, initial, max_length=max_length, mode=mode,
+                                            presentation=presentation, min_interval_ms=min_interval_ms))
+
+    def add_sensor(self, name: str, source, initial=None, *, get=None, options=None,
+                   write_on_change: float = 0.0, min_interval_ms: int = 100,
+                   **presentation) -> Sensor:
+        """A value a host shows: ``add_sensor("T", signal)`` shows a signal's value,
+        ``add_sensor("T", float, 21.5)`` or ``add_sensor("T", 21.5)`` holds its own,
+        ``add_sensor("T", float, get=fn)`` reads a function, and
+        ``add_sensor("Phase", 0, options=[...])`` holds the index of an option."""
+        name = self._core._host_name(name, "sensor")
+        return self._core._add_property(Sensor(self._core, self._id, name, source, initial, get=get, options=options,
+                                         presentation=presentation, write_on_change=write_on_change,
+                                         min_interval_ms=min_interval_ms))
+
+    def add_event(self, name: str, types, *, display_name=None, icon=None, device_class=None,
+                  category="none", disabled_by_default=False) -> Event:
+        """A moment the device reports, of one of ``types``; ``event.write(type)`` reports it."""
+        name = check_name(name, "event")
+        if any(e.name == name and e.device_id == self._id for e in self._core._events):
+            raise ValueError(f"event {name!r} exists already")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default)
+        event = Event(self._core, self._id, name, types, presentation)
+        self._core._events.append(event)
+        self._core._catalog_changed()
+        return event
+
+    def add_button(self, name: str, press: Callable[[], None], *, display_name=None, icon=None,
+                   device_class=None, category="none", disabled_by_default=False) -> Button:
+        """A button a host presses; ``press`` runs with no arguments, parameters are ignored."""
+        name = self._core._host_name(name, "button")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default)
+        button = Button(self._id, name, press, presentation)
+        self._core._buttons.append(button)
+        self._core._catalog_changed()
+        return button
+
+    def on_command(self, name: str, handler: Callable | None = None):
+        """A command a host sends by name and no host lists: ``handler(*params)`` runs with its
+        parameters as text. Works as ``@device.on_command("MOTOR")`` or as a plain call."""
+        def register(fn):
+            if not callable(fn):
+                raise TypeError("a command needs a function")
+            self._core._plain_commands[self._core._host_name(name, "command")] = (self._id, fn)
+            return fn
+        return register if handler is None else register(handler)
+
+
+
+class SubDevice(_DeviceBase):
+    """A second board, or a part of this one, that a host shows below the board as a device of
+    its own. Declare its signals and entities on it, as on the board. The script talks to it and
+    says when it goes missing, comes back or restarts."""
+
+    def __init__(self, core: "Blaeck", device_id: int, name: str, hw_version: str, fw_version: str):
+        self._core, self._id = core, device_id
+        self.name = name
+        self.hw_version = hw_version
+        self.fw_version = fw_version
+        self._missing = False
+        self._reported_missing = False
+        self._restart_pending = False
+
+    @property
+    def missing(self) -> bool:
+        """True between mark_missing() and mark_present()."""
+        return self._missing
+
+    def mark_missing(self) -> None:
+        """It stopped answering: its signals leave the data, commands to it are refused with
+        DEVICE_NOT_RESPONDING, and a host is told."""
+        self._core._set_missing(self, True)
+
+    def mark_present(self) -> None:
+        """It answers again. Each of its on-change signals is sent anew."""
+        self._core._set_missing(self, False)
+
+    def write_restarted(self) -> None:
+        """It restarted: a host is told, so it knows the values went back to their defaults."""
+        self._restart_pending = True
+        self._core._write_device_notices()
+
+    def write_all(self, timestamp: int | None = None) -> None:
+        """Sends this device's signals now."""
+        core = self._core
+        core._write_data(0, [s for s in core._signals if s.device_id == self._id],
+                         core._now() if timestamp is None else timestamp)
+
+
+class Blaeck(_DeviceBase):
     """A device a host such as Loggbok logs and controls, over serial or TCP.
 
     Declare signals, then :meth:`begin` with an opened port and call :meth:`tick` in a loop.
     """
 
     def __init__(self, name: str = "Unnamed", *, hw_version: str = "n/a", fw_version: str = "n/a"):
+        self._core, self._id = self, 0
+        self._devices: list[SubDevice] = []
         self.name = check_name(name, "device")
         self.hw_version = hw_version
         self.fw_version = fw_version
@@ -67,28 +233,60 @@ class Blaeck:
         self._any_command: Callable | None = None
         self._catalog_dirty = False
 
-    # ----- registration -----
-
-    def add_signal(self, name: str, type_or_initial, initial=None, *, unit: str | None = None,
-                   write_at_interval=ALWAYS, write_on_change: float | None = None,
-                   min_interval_ms: int = 100) -> Signal:
-        """A value the device logs: ``add_signal("T", float)``, ``add_signal("T", float, 21.5)``
-        or ``add_signal("T", 21.5)``. ``unit`` in Home Assistant's spelling, such as "°C"."""
-        name = check_name(name, "signal")
-        if any(s.name == name and s.device_id == 0 for s in self._signals):
-            raise ValueError(f"signal {name!r} exists already")
-        type_, value = type_and_value(type_or_initial, initial)
-        signal = Signal(self, 0, name, type_, value, write_at_interval, write_on_change,
-                        min_interval_ms, check_unit(unit))
-        self._signals.append(signal)
-        return signal
-
     def set_timestamp_mode(self, mode: TimestampMode, clock: Callable[[], int] | None = None) -> None:
         """How data frames are timestamped; ``clock`` returns microseconds, replacing the default."""
         self._timestamp_mode = TimestampMode(mode)
         self._timestamp_clock = clock
 
-    # ----- entities: what a host shows and controls -----
+
+    def add_device(self, name: str, *, hw_version: str = "n/a", fw_version: str = "n/a") -> SubDevice:
+        """A device a host shows below this board, such as a second board it polls."""
+        name = check_name(name, "device")
+        if name == self.name or any(d.name == name for d in self._devices):
+            raise ValueError(f"device {name!r}: no two devices on a board, the board included, "
+                             "share a name")
+        if len(self._devices) >= 254:
+            raise ValueError("a board has at most 254 devices")
+        device = SubDevice(self, len(self._devices) + 1, name, hw_version, fw_version)
+        self._devices.append(device)
+        return device
+
+    def _device(self, device_id: int) -> SubDevice | None:
+        return self._devices[device_id - 1] if device_id > 0 else None
+
+    def _is_missing(self, device_id: int) -> bool:
+        return device_id > 0 and self._devices[device_id - 1]._missing
+
+    def _set_missing(self, device: SubDevice, missing: bool) -> None:
+        if device._missing == missing:
+            return
+        device._missing = missing
+        if not missing:
+            # The host got none of its values meanwhile, so each on-change signal is due again.
+            for sig in self._signals:
+                if sig.device_id == device._id and sig._reporting is not None:
+                    sig._reporting.valid = False
+        self._write_device_notices()
+
+    def _write_device_notices(self) -> None:
+        """Restarts, then the latest missing state, of each sub-device, once a host can hear them.
+        Missing and back again before that is no change."""
+        if not self._ready():
+            return
+        for d in self._devices:
+            if d._restart_pending:
+                self._send(frames.device_notification(d._id, frames.DeviceEvent.RESTARTED))
+                d._restart_pending = False
+            if d._missing != d._reported_missing:
+                event = frames.DeviceEvent.NOT_RESPONDING if d._missing else frames.DeviceEvent.RESPONDING_AGAIN
+                self._send(frames.device_notification(d._id, event))
+                d._reported_missing = d._missing
+
+    def _ordered_signals(self) -> list[Signal]:
+        """The signals in device-list order: the board's, then each sub-device's. Data frames
+        number them by this order."""
+        return [sig for device_id in range(len(self._devices) + 1)
+                for sig in self._signals if sig.device_id == device_id]
 
     def _host_name(self, name: str, what: str) -> str:
         """A name a host sends, unique among inputs, sensors, buttons and plain commands."""
@@ -105,102 +303,6 @@ class Blaeck:
 
     def _catalog_changed(self) -> None:
         self._catalog_dirty = True
-
-    def add_number_input(self, name: str, type_or_initial, initial=None, *, min=None, max=None,
-                         step=None, mode=None, unit=None, display_name=None, icon=None,
-                         device_class=None, state_class=None, display_precision=None,
-                         category="none", disabled_by_default=False, force_update=False,
-                         write_on_change: float = 0.0, min_interval_ms: int = 100) -> NumberInput:
-        """A number a host sets, within ``min`` and ``max`` and on ``step`` if given."""
-        name = self._host_name(name, "input")
-        presentation = Presentation(number=True, unit=unit, display_name=display_name, icon=icon,
-                                    device_class=device_class, state_class=state_class,
-                                    display_precision=display_precision, category=category,
-                                    disabled_by_default=disabled_by_default, force_update=force_update)
-        return self._add_property(NumberInput(self, 0, name, type_or_initial, initial, min=min, max=max,
-                                              step=step, mode=mode, presentation=presentation,
-                                              write_on_change=write_on_change,
-                                              min_interval_ms=min_interval_ms))
-
-    def add_switch(self, name: str, initial: bool = False, *, display_name=None, icon=None,
-                   device_class=None, category="none", disabled_by_default=False,
-                   force_update=False, min_interval_ms: int = 100) -> Switch:
-        name = self._host_name(name, "switch")
-        presentation = Presentation(number=False, display_name=display_name, icon=icon,
-                                    device_class=device_class, category=category,
-                                    disabled_by_default=disabled_by_default, force_update=force_update)
-        return self._add_property(Switch(self, 0, name, initial, presentation=presentation,
-                                         min_interval_ms=min_interval_ms))
-
-    def add_select(self, name: str, index: int = 0, *, options, display_name=None, icon=None,
-                   device_class=None, category="none", disabled_by_default=False,
-                   force_update=False, min_interval_ms: int = 100) -> Select:
-        """One of ``options``, held as its index; a host sends the index or the option's name."""
-        name = self._host_name(name, "select")
-        presentation = Presentation(number=False, display_name=display_name, icon=icon,
-                                    device_class=device_class, category=category,
-                                    disabled_by_default=disabled_by_default, force_update=force_update)
-        return self._add_property(Select(self, 0, name, index, options=options,
-                                         presentation=presentation, min_interval_ms=min_interval_ms))
-
-    def add_text_input(self, name: str, initial: str = "", *, max_length: int = 255, mode=None,
-                       display_name=None, icon=None, device_class=None, category="none",
-                       disabled_by_default=False, force_update=False,
-                       min_interval_ms: int = 100) -> TextInput:
-        name = self._host_name(name, "text input")
-        presentation = Presentation(number=False, display_name=display_name, icon=icon,
-                                    device_class=device_class, category=category,
-                                    disabled_by_default=disabled_by_default, force_update=force_update)
-        return self._add_property(TextInput(self, 0, name, initial, max_length=max_length, mode=mode,
-                                            presentation=presentation, min_interval_ms=min_interval_ms))
-
-    def add_sensor(self, name: str, source, initial=None, *, get=None, options=None,
-                   write_on_change: float = 0.0, min_interval_ms: int = 100,
-                   **presentation) -> Sensor:
-        """A value a host shows: ``add_sensor("T", signal)`` shows a signal's value,
-        ``add_sensor("T", float, 21.5)`` or ``add_sensor("T", 21.5)`` holds its own,
-        ``add_sensor("T", float, get=fn)`` reads a function, and
-        ``add_sensor("Phase", 0, options=[...])`` holds the index of an option."""
-        name = self._host_name(name, "sensor")
-        return self._add_property(Sensor(self, 0, name, source, initial, get=get, options=options,
-                                         presentation=presentation, write_on_change=write_on_change,
-                                         min_interval_ms=min_interval_ms))
-
-    def add_event(self, name: str, types, *, display_name=None, icon=None, device_class=None,
-                  category="none", disabled_by_default=False) -> Event:
-        """A moment the device reports, of one of ``types``; ``event.write(type)`` reports it."""
-        name = check_name(name, "event")
-        if any(e.name == name and e.device_id == 0 for e in self._events):
-            raise ValueError(f"event {name!r} exists already")
-        presentation = Presentation(number=False, display_name=display_name, icon=icon,
-                                    device_class=device_class, category=category,
-                                    disabled_by_default=disabled_by_default)
-        event = Event(self, 0, name, types, presentation)
-        self._events.append(event)
-        self._catalog_changed()
-        return event
-
-    def add_button(self, name: str, press: Callable[[], None], *, display_name=None, icon=None,
-                   device_class=None, category="none", disabled_by_default=False) -> Button:
-        """A button a host presses; ``press`` runs with no arguments, parameters are ignored."""
-        name = self._host_name(name, "button")
-        presentation = Presentation(number=False, display_name=display_name, icon=icon,
-                                    device_class=device_class, category=category,
-                                    disabled_by_default=disabled_by_default)
-        button = Button(0, name, press, presentation)
-        self._buttons.append(button)
-        self._catalog_changed()
-        return button
-
-    def on_command(self, name: str, handler: Callable | None = None):
-        """A command a host sends by name and no host lists: ``handler(*params)`` runs with its
-        parameters as text. Works as ``@device.on_command("MOTOR")`` or as a plain call."""
-        def register(fn):
-            if not callable(fn):
-                raise TypeError("a command needs a function")
-            self._plain_commands[self._host_name(name, "command")] = fn
-            return fn
-        return register if handler is None else register(handler)
 
     def on_any_command(self, fn: Callable):
         """Sees every command, after its own function: ``fn(command, *params)``. Its answer
@@ -291,6 +393,7 @@ class Blaeck:
         if not self._ready():
             return
         self._write_restarted()
+        self._write_device_notices()
         self._receiver.feed(self._transport.read_available())
         received = self._receiver.next_command()
         if received is None:
@@ -381,17 +484,27 @@ class Blaeck:
         prop = next((p for p in self._properties if p.name == cmd.name), None)
         if prop is not None:
             matched = True
-            reason = prop._receive(cmd.params)
+            if self._is_missing(prop.device_id):
+                reason = _properties.DEVICE_NOT_RESPONDING
+            else:
+                reason = prop._receive(cmd.params)
             if reason == _ACK_OK:
                 written = prop
         if not matched:
             button = next((b for b in self._buttons if b.name == cmd.name), None)
-            if button is not None:
-                matched, reason = True, _ACK_OK
-                self._safe(button.press)
-            elif cmd.name in self._plain_commands:
-                matched, reason = True, _ACK_OK
-                self._safe(self._plain_commands[cmd.name], *cmd.params)
+            command = self._plain_commands.get(cmd.name)
+            target = button.device_id if button is not None else (command[0] if command else None)
+            if target is not None:
+                matched = True
+                # Refused for a missing device, so its function doesn't forward to nothing.
+                if self._is_missing(target):
+                    reason = _properties.DEVICE_NOT_RESPONDING
+                else:
+                    reason = _ACK_OK
+                    if button is not None:
+                        self._safe(button.press)
+                    else:
+                        self._safe(command[1], *cmd.params)
         if self._any_command is not None:
             took = self._safe(self._any_command, cmd.name, *cmd.params)
             if not matched and took is True:
@@ -437,6 +550,8 @@ class Blaeck:
     def _write_changed_properties(self) -> None:
         now = self._clock.millis()
         for prop in self._properties:
+            if self._is_missing(prop.device_id):
+                continue
             r = prop._reporting
             if r.valid and now - r.last_write_ms < r.min_interval_ms:
                 continue
@@ -456,12 +571,20 @@ class Blaeck:
             self._timed_first = True
 
     def _write_devices(self, msg_id: int) -> None:
-        board = frames.DeviceEntry(0, self.name, self.hw_version, self.fw_version,
-                                   [(s.name, s.unit, s.dtype) for s in self._signals],
-                                   restarted=not self._restart_reported)
+        def signals_of(device_id):
+            return [(sig.name, sig.unit, sig.dtype) for sig in self._signals if sig.device_id == device_id]
+        entries = [frames.DeviceEntry(0, self.name, self.hw_version, self.fw_version, signals_of(0),
+                                      restarted=not self._restart_reported)]
+        entries += [frames.DeviceEntry(d._id, d.name, d.hw_version, d.fw_version, signals_of(d._id),
+                                       not_responding=d._missing, restarted=d._restart_pending)
+                    for d in self._devices]
         self._send(frames.device_list(LIBRARY_NAME, LIBRARY_VERSION,
-                                      _commands.COMMAND_MAX_CHARS - 1, [board], msg_id))
+                                      _commands.COMMAND_MAX_CHARS - 1, entries, msg_id))
+        # The list told the host every state, so no notice for it is still due.
         self._restart_reported = True
+        for d in self._devices:
+            d._restart_pending = False
+            d._reported_missing = d._missing
 
     # ----- data -----
 
@@ -479,6 +602,9 @@ class Blaeck:
         self._write_data(msg_id, self._signals, timestamp)
 
     def _write_signal_now(self, signal: Signal, timestamp: int | None) -> None:
+        if self._is_missing(signal.device_id):
+            log.debug("write() dropped for %r: its device is marked missing", signal.name)
+            return
         self._write_data(0, [signal], self._now() if timestamp is None else timestamp)
 
     def _write_if_due(self, timestamp: int | None) -> None:
@@ -521,17 +647,22 @@ class Blaeck:
 
     def _write_data(self, msg_id: int, selected: list[Signal], timestamp: int,
                     interval_report: bool = False) -> None:
-        if not self._may_write_data() or not selected:
+        if not self._may_write_data():
             return
-        chosen = set(map(id, selected))
+        # A missing device's signals are left out; the host learned of it from C1 or B7.
+        chosen = {id(sig) for sig in selected if not self._is_missing(sig.device_id)}
+        if not chosen:
+            return
         flags = frames.FIRST_AFTER_RESTART if self._restart_flag else 0
         if self._requested:
             flags |= frames.ANSWERS_WRITE_DATA
         elif interval_report:
             flags |= frames.INTERVAL_REPORT
-        values = [(i, s.dtype, s.value) for i, s in enumerate(self._signals) if id(s) in chosen]
+        ordered = self._ordered_signals()
+        values = [(i, s.dtype, s.value) for i, s in enumerate(ordered) if id(s) in chosen]
         has_ts = self._timestamp_mode is not TimestampMode.NONE
-        hash_ = schema_hash([(None, s.name, s.unit, s.dtype) for s in self._signals])
+        hash_ = schema_hash([(None if s.device_id == 0 else self._device(s.device_id).name,
+                              s.name, s.unit, s.dtype) for s in ordered])
         self._send(frames.data(values, schema_hash=hash_, flags=flags,
                                timestamp_mode=self._timestamp_mode,
                                timestamp=timestamp if has_ts else None, message_id=msg_id))

@@ -6,7 +6,7 @@ takes commands, over serial or TCP, using the
 [blaeck protocol](https://sebajost.github.io/blaeck-protocol/). A host such as Loggbok cannot
 tell it from a blaeck board.
 
-**Status: in development.** Signals, data, inputs, sensors, selects, events, buttons and commands work over a serial port; sub-devices and TCP follow. It replaces
+**Status: in development.** Signals, data, inputs, sensors, selects, events, buttons, commands and sub-devices work over a serial port; TCP follows. It replaces
 [blaecktcpy](https://github.com/sebaJoSt/blaecktcpy), which stays on PyPI for protocol v1.
 
 ## What it will look like

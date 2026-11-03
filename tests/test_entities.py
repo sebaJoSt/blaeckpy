@@ -149,3 +149,40 @@ def test_an_event_writes_only_its_own_types():
         event.write("Dry run")
     with pytest.raises(ValueError):
         Blaeck().add_event("Alarms", ["a", "a"])
+
+
+def test_device_names_are_unique_on_the_board_the_board_included():
+    device = Blaeck("Greenhouse")
+    device.add_device("Pump controller")
+    with pytest.raises(ValueError):
+        device.add_device("Pump controller")
+    with pytest.raises(ValueError):
+        device.add_device("Greenhouse")
+    with pytest.raises(ValueError):
+        device.add_device("")
+
+
+def test_signals_and_events_are_unique_per_device_host_names_on_the_board():
+    device = Blaeck()
+    pump = device.add_device("Pump")
+    device.add_signal("Flow", 0.0)
+    pump.add_signal("Flow", 0.0)
+    device.add_event("Alarms", ["a"])
+    pump.add_event("Alarms", ["restarted"])
+    device.add_number_input("Speed", 0)
+    with pytest.raises(ValueError):
+        pump.add_number_input("Speed", 0)
+
+
+def test_a_missing_device_refuses_commands_and_comes_back():
+    device, port, calls = Blaeck(), Port(), []
+    pump = device.add_device("Pump")
+    pump.add_number_input("PumpSpeed", 0)
+    pump.on_command("PRIME", lambda *p: calls.append(p))
+    device.begin(port)
+    pump.mark_missing()
+    assert pump.missing
+    assert ack_reason(device, port, "<PumpSpeed,5>") == 8
+    assert ack_reason(device, port, "<PRIME,1>") == 8 and calls == []
+    pump.mark_present()
+    assert ack_reason(device, port, "<PRIME,1>") == 0 and calls == [("1",)]

@@ -59,11 +59,11 @@ class FakeClock:
 
 
 SUPPORTED_STEPS = {"command", "set_signal", "set_property", "advance_ms", "tick", "write_all",
-                   "write_event"}
+                   "write_event", "mark_missing", "mark_present", "write_restarted"}
 
 
 def missing_features(scenario):
-    missing = [key for key in ("devices",) if scenario.get(key)]
+    missing = []
     missing += sorted({next(iter(s)) for s in scenario["steps"]} - SUPPORTED_STEPS)
     if scenario.get("timestamp_mode") == "unix":
         missing.append("unix timestamps")
@@ -127,8 +127,21 @@ def declare(scenario):
     device._clock = FakeClock()
     if scenario.get("timestamp_mode") == "micros":
         device.set_timestamp_mode(blaeckpy.TimestampMode.MICROS)
-    signals = {}
-    for s in scenario.get("signals", []):
+    signals, properties, events = {}, {}, {}
+    declare_entities(device, None, scenario, signals, properties, events)
+    devices = {}
+    for d in scenario.get("devices", []):
+        sub = device.add_device(d["name"], hw_version=d.get("hw_version", "n/a"),
+                                fw_version=d.get("fw_version", "n/a"))
+        devices[d["name"]] = sub
+        declare_entities(sub, d["name"], d, signals, properties, events)
+    for c in scenario.get("commands", []):
+        device.on_command(c, lambda *params: None)
+    return device, signals, properties, events, devices
+
+
+def declare_entities(device, device_name, holder, signals, properties, events):
+    for s in holder.get("signals", []):
         type_ = {"bool": bool, "int": int, "float": float, "str": str}[s["type"]]
         kwargs = {}
         if "write_at_interval" in s:
@@ -140,18 +153,16 @@ def declare(scenario):
         default = {"bool": False, "int": 0, "float": 0.0, "str": ""}[s["type"]]
         signals[s["name"]] = device.add_signal(s["name"], type_, s.get("value", default),
                                                unit=s.get("unit"), **kwargs)
-    properties = {p["name"]: declare_property(device, p, signals) for p in scenario.get("properties", [])}
-    events = {e["name"]: device.add_event(e["name"], e["types"], **pick(e, PRESENTATION))
-              for e in scenario.get("events", [])}
-    for b in scenario.get("buttons", []):
+    for p in holder.get("properties", []):
+        properties[p["name"]] = declare_property(device, p, signals)
+    for e in holder.get("events", []):
+        events[(device_name, e["name"])] = device.add_event(e["name"], e["types"], **pick(e, PRESENTATION))
+    for b in holder.get("buttons", []):
         device.add_button(b["name"], lambda: None, **pick(b, PRESENTATION))
-    for c in scenario.get("commands", []):
-        device.on_command(c, lambda *params: None)
-    return device, signals, properties, events
 
 
 def play(scenario):
-    device, signals, properties, events = declare(scenario)
+    device, signals, properties, events, devices = declare(scenario)
     port = FakePort()
     device.begin(port)
     recorded = []
@@ -176,7 +187,13 @@ def play(scenario):
             properties[arg].value = step["value"]
             device.tick()
         elif kind == "write_event":
-            events[arg[0]].write(arg[1])
+            events[(step.get("device"), arg[0])].write(arg[1])
+        elif kind == "mark_missing":
+            devices[arg].mark_missing()
+        elif kind == "mark_present":
+            devices[arg].mark_present()
+        elif kind == "write_restarted":
+            devices[arg].write_restarted()
         elif kind == "advance_ms":
             device._clock.ms += int(arg)
             device.tick()
