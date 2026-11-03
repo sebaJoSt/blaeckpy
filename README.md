@@ -119,7 +119,8 @@ A few things to know:
 
 - **Errors at registration raise.** A bad name, a range with `min` above `max` or an option list
   with a blank entry raises `ValueError` or `TypeError` where it was written, instead of being
-  reported on a debug stream.
+  reported on a debug stream. A button or command left without a function raises at `begin()`:
+  until then it could still be a decorator.
 - **A callback that raises doesn't stop the device.** The exception is logged with its traceback
   on the `blaeckpy` logger, `tick()` goes on, and the host still gets its answer. While a
   `clock=` fails, no data goes out; a signal that changed goes out once it works again.

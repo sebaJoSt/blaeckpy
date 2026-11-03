@@ -192,7 +192,7 @@ class _DeviceBase:
             def decorate(fn: Callable[[], None]) -> Callable[[], None]:
                 register(fn)
                 return fn
-            return decorate
+            return self._core._awaiting_function(f"add_button({name!r})", decorate)
         return register(press)
 
     def on_command(self, name: str, handler: Callable[..., object] | None = None):
@@ -203,7 +203,9 @@ class _DeviceBase:
                 raise TypeError("a command needs a function")
             self._core._plain_commands[self._core._host_name(name, "command")] = (self._id, fn)
             return fn
-        return register if handler is None else register(handler)
+        if handler is None:
+            return self._core._awaiting_function(f"on_command({name!r})", register)
+        return register(handler)
 
 
 
@@ -299,6 +301,8 @@ class Blaeck(_DeviceBase):
         self._last_interval_ms = 0
 
         self._began = False
+        # The calls still waiting for their function, for begin() to refuse.
+        self._without_function: list[str] = []
         self._status: _status.StatusPage | None = None
         self._connection = "Closed"
         # The last command received, as (name, time.time()), for the status page.
@@ -483,6 +487,17 @@ class Blaeck(_DeviceBase):
         if fn is not None:
             self._safe(fn, *args)
 
+    def _awaiting_function(self, call: str, register):
+        """``register`` as the decorator a call without a function returns. Whether it gets one
+        can't be told yet, so begin() looks at what is still waiting."""
+        self._without_function.append(call)
+
+        def decorate(fn):
+            if call in self._without_function:
+                self._without_function.remove(call)
+            return register(fn)
+        return decorate
+
     def _safe(self, fn, *args):
         """Runs a script's function inside tick(). An exception is logged with its traceback and
         tick() goes on: one bad command must not end the device."""
@@ -508,6 +523,9 @@ class Blaeck(_DeviceBase):
         """
         if self._began:
             raise RuntimeError("begin() was called already; close() first to begin anew")
+        if self._without_function:
+            raise ValueError(f"{self._without_function[0]} has no function: pass one, or use it "
+                             "as a decorator")
         if max_clients is not None and not hasattr(transport, "accept"):
             raise TypeError("max_clients is for a TCP server, not a serial port")
         if status_port is _DEFAULT:

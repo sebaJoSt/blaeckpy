@@ -1,6 +1,7 @@
 """Rules for inputs, sensors, events, buttons and commands that the golden scenarios cannot show."""
 
 import logging
+import re
 
 import pytest
 
@@ -447,3 +448,30 @@ def test_a_request_while_the_clock_fails_is_acked_and_sends_nothing():
     assert data_frames(port) == []
     device.write_all()  # From the script too: logged, not raised.
     assert data_frames(port) == []
+
+
+@pytest.mark.parametrize("declare, call", [
+    (lambda d: d.add_button("Reset"), "add_button('Reset')"),
+    (lambda d: d.add_button("Reset", None), "add_button('Reset')"),
+    (lambda d: d.on_command("MOTOR"), "on_command('MOTOR')"),
+    (lambda d: d.on_command("MOTOR", None), "on_command('MOTOR')"),
+    (lambda d: d.add_device("Pump").add_button("Reset"), "add_button('Reset')"),
+    (lambda d: d.add_device("Pump").on_command("MOTOR"), "on_command('MOTOR')"),
+])
+def test_begin_refuses_a_button_or_command_left_without_a_function(declare, call):
+    device, port = Blaeck(), Port()
+    declare(device)
+    with pytest.raises(ValueError, match=re.escape(f"{call} has no function")):
+        device.begin(port)
+
+
+def test_a_decorator_given_its_function_before_begin_is_no_mistake():
+    device, port, pressed = Blaeck(), Port(), []
+    waiting = device.add_button("Reset")
+    command = device.on_command("MOTOR")
+    waiting(lambda: pressed.append("Reset"))
+    command(lambda *params: pressed.append("MOTOR"))
+    device.begin(port)
+    assert ack_reason(device, port, "<Reset>") == 0
+    assert ack_reason(device, port, "<MOTOR,1>") == 0
+    assert pressed == ["Reset", "MOTOR"]
