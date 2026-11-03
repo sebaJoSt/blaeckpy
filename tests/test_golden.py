@@ -6,6 +6,7 @@ compared with what blaeck sent. A scenario that needs what blaeckpy does not hav
 naming what is missing.
 """
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -14,7 +15,7 @@ import pytest
 import blaeckpy
 from blaeckpy import _device
 from blaeckpy._signal import ALWAYS, ANY_CHANGE, OFF, OnChange
-from blaeckpy.protocol import envelope
+from blaeckpy.protocol import _decode
 
 GOLDEN = Path(__file__).parent / "golden"
 SCENARIOS = sorted((GOLDEN / "scenarios").glob("*.json"))
@@ -216,12 +217,19 @@ def blaeck_frames(name):
             (line.split("\t") for line in lines if line and not line.startswith("#"))]
 
 
-def describe(frame):
+def describe(want: bytes, got: bytes, signals) -> str:
+    """Where two frames differ, field by field, read with the decoder."""
     try:
-        e = envelope.open_frame(frame)
-        return f"key 0x{e.key:02X} id {e.message_id} fields {e.fields.hex(' ')}"
+        a, b = _decode.decode(want, signals), _decode.decode(got, signals)
     except ValueError as err:
-        return f"unreadable ({err}): {frame.hex(' ')}"
+        return f"  blaeck:   {want.hex(' ')}\n  blaeckpy: {got.hex(' ')}\n  ({err})"
+    if a.key != b.key or a.message_id != b.message_id:
+        return (f"  blaeck:   key 0x{a.key:02X} message id {a.message_id}\n"
+                f"  blaeckpy: key 0x{b.key:02X} message id {b.message_id}")
+    left, right = dataclasses.asdict(a.body), dataclasses.asdict(b.body)
+    lines = [f"  {k}: blaeck {left[k]!r}, blaeckpy {right.get(k)!r}"
+             for k in left if left[k] != right.get(k)]
+    return f"  key 0x{a.key:02X}, fields that differ:\n" + "\n".join(lines)
 
 
 @pytest.mark.parametrize("path", SCENARIOS, ids=lambda p: p.stem)
@@ -235,10 +243,14 @@ def test_scenario_sends_what_blaeck_sends(path, monkeypatch):
 
     expected = blaeck_frames(path.stem)
     actual = play(scenario)
+    signals = None
     for n, (want, got) in enumerate(zip(expected, actual)):
         assert got == want, (
             f"frame {n}, blaeck sent it at step '{want[0]}', blaeckpy at '{got[0]}':\n"
-            f"  blaeck:   {describe(want[1])}\n  blaeckpy: {describe(got[1])}")
+            + describe(want[1], got[1], signals))
+        body = _decode.decode(want[1], signals).body
+        if isinstance(body, _decode.DeviceList):
+            signals = body.signals
     assert len(actual) == len(expected), (
         f"blaeck sent {len(expected)} frames, blaeckpy {len(actual)}; first extra or missing: "
         f"{(expected + actual)[min(len(expected), len(actual))][0]}")
