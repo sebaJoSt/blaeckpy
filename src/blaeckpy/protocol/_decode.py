@@ -369,6 +369,7 @@ def decode(frame: bytes, signals: list[Signal] | None = None) -> Frame:
     opened = envelope.open_frame(frame)
     r = _Reader(opened.fields)
     key = opened.key
+    body: object
     if key == Key.DEVICE_LIST:
         body = _device_list(r)
     elif key == Key.DATA:
@@ -397,11 +398,11 @@ class Decoder:
         self._buffer = bytearray()
         self.device_list: DeviceList | None = None
 
-    def feed(self, data: bytes) -> list:
+    def feed(self, data: bytes) -> list[Frame | str]:
         """What the bytes so far complete: a :class:`Frame` each, and terminal text as str.
         An unfinished frame waits for the next call."""
         self._buffer += data
-        out = []
+        out: list[Frame | str] = []
         while self._buffer:
             start = self._buffer.find(envelope.START)
             if start < 0:

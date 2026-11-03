@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import struct
 from dataclasses import dataclass
+from typing import Any
 
 from .protocol.frames import DType
 
@@ -64,9 +65,10 @@ def type_and_value(type_or_initial: object, initial: object) -> tuple[type, obje
             raise TypeError("give a type and a starting value, or a starting value alone")
         value = type_or_initial
         # bool before int: True is an int too.
-        type_ = next((t for t in (bool, int, float, str) if isinstance(value, t)), None)
-        if type_ is None:
+        found = next((t for t in (bool, int, float, str) if isinstance(value, t)), None)
+        if found is None:
             raise TypeError(f"a value is a bool, int, float or str, not {type(value).__name__}")
+        type_ = found
     return type_, checked(type_, value, "starting value")
 
 
@@ -131,11 +133,11 @@ def _same_bits(a: float, b: float) -> bool:
     return struct.pack("<d", a) == struct.pack("<d", b)
 
 
-def changed(type_: type, value: object, reporting: _Reporting, delta: float) -> bool:
+def changed(type_: type, value: Any, reporting: _Reporting, delta: float) -> bool:
     """Whether value moved by at least delta from the baseline; always without one."""
     if not reporting.valid:
         return True
-    previous = reporting.baseline
+    previous: Any = reporting.baseline
     if type_ is bool or type_ is str:
         return value != previous
     if type_ is int:

@@ -25,3 +25,6 @@ jobs:
 
       - name: Run tests
         run: python -m pytest -q
+
+      - name: Check types
+        run: python -m mypy

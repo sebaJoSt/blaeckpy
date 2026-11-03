@@ -113,13 +113,16 @@ class TcpTransport:
         self.slots[slot] = None
         if self.host == slot:
             self.host = None
+        if connection is None:
+            return
         try:
             connection.sock.close()
         except OSError:
             pass
 
     def _drop(self, slot: int, reason: str | None = None) -> None:
-        address = self.slots[slot].address
+        connection = self.slots[slot]
+        address = connection.address if connection is not None else None
         self._release(slot)
         self._on_disconnect(slot, address, reason)
 
@@ -170,15 +173,18 @@ class TcpTransport:
             self._drop(previous, "replaced as host")
 
     def _write(self, slot: int, data: bytes) -> bool:
+        connection = self.slots[slot]
+        if connection is None:
+            return False
         try:
-            self.slots[slot].sock.sendall(data)
+            connection.sock.sendall(data)
             return True
         except OSError:
             self._drop(slot)
             return False
 
     def send(self, data: bytes) -> None:
-        if self.has_host():
+        if self.host is not None and self.slots[self.host] is not None:
             self._write(self.host, data)
 
     def terminal(self, data: bytes) -> None:

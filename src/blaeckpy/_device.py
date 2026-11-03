@@ -260,7 +260,7 @@ class Blaeck(_DeviceBase):
         self.hw_version = hw_version
         self.fw_version = fw_version
         self._signals: list[Signal] = []
-        self._transport = None
+        self._transport: _transport.StreamTransport | _transport.TcpTransport | None = None
         self._clock = _clock.Clock()
         self.terminal = Terminal(self)
         self._ticks_without_wait = 0
@@ -291,7 +291,7 @@ class Blaeck(_DeviceBase):
         self._properties: list[_properties.Property] = []
         self._events: list[Event] = []
         self._buttons: list[Button] = []
-        self._plain_commands: dict[str, Callable] = {}
+        self._plain_commands: dict[str, tuple[int, Callable[..., object]]] = {}
         self._any_command: Callable | None = None
         self._catalog_dirty = False
 
@@ -319,9 +319,6 @@ class Blaeck(_DeviceBase):
         device = SubDevice(self, len(self._devices) + 1, name, hw_version, fw_version)
         self._devices.append(device)
         return device
-
-    def _device(self, device_id: int) -> SubDevice | None:
-        return self._devices[device_id - 1] if device_id > 0 else None
 
     def _is_missing(self, device_id: int) -> bool:
         return device_id > 0 and self._devices[device_id - 1]._missing
@@ -567,7 +564,7 @@ class Blaeck(_DeviceBase):
             due = self._next_due_ms()
             if due is not None:
                 wait = min(wait, max(0.0, (due - self._clock.millis()) / 1000))
-            waitables = self._transport.selectables() if self._transport is not None else []
+            waitables: list = self._transport.selectables() if self._transport is not None else []
             if waitables:
                 select.select(waitables, [], [], wait)
             else:
@@ -577,6 +574,7 @@ class Blaeck(_DeviceBase):
     def _transport_pending(self) -> bool:
         """A complete command already taken in, which select() would not wake for."""
         t = self._transport
+        assert t is not None
         receivers = [t._receiver] if isinstance(t, _transport.StreamTransport) else \
             [c.receiver for c in t.slots if c is not None]
         return any(r.has_command() for r in receivers)
@@ -622,6 +620,7 @@ class Blaeck(_DeviceBase):
         return self._transport is not None and self._transport.has_host()
 
     def _send(self, frame: bytes) -> None:
+        assert self._transport is not None
         self._transport.send(frame)
 
     def _read(self) -> None:
@@ -655,7 +654,7 @@ class Blaeck(_DeviceBase):
 
     def _ack(self, cmd: _commands.Command, reason: int) -> None:
         # A terminal's commands run, but only the host is answered.
-        if not self._ready() or not self._transport.requester_is_host():
+        if self._transport is None or not self._ready() or not self._transport.requester_is_host():
             return
         name_hash = frames.fnv1a32(cmd.name.encode("utf-8", "surrogateescape")) if cmd.name else 0
         self._send(frames.command_ack(frames.fnv1a32(cmd.raw[cmd.prefix_len:]), name_hash, reason,
@@ -746,7 +745,7 @@ class Blaeck(_DeviceBase):
                     reason = _ACK_OK
                     if button is not None:
                         self._safe(button.press)
-                    else:
+                    elif command is not None:
                         self._safe(command[1], *cmd.params)
         if self._any_command is not None:
             took = self._safe(self._any_command, cmd.name, *cmd.params)
@@ -880,7 +879,7 @@ class Blaeck(_DeviceBase):
         for s in self._signals:
             r = s._reporting
             interval = due and (s.interval_mode is ALWAYS or (
-                isinstance(s.interval_mode, OnChange)
+                isinstance(s.interval_mode, OnChange) and r is not None
                 and (initial or changed(s.type, s.value, r, r.interval_delta))))
             immediate = (r is not None and r.immediate
                          and (not r.valid or change_now - r.last_write_ms >= r.min_interval_ms)
@@ -907,7 +906,7 @@ class Blaeck(_DeviceBase):
         ordered = self._ordered_signals()
         values = [(i, s.dtype, s.value) for i, s in enumerate(ordered) if id(s) in chosen]
         has_ts = self._timestamp_mode is not TimestampMode.NONE
-        hash_ = schema_hash([(None if s.device_id == 0 else self._device(s.device_id).name,
+        hash_ = schema_hash([(None if s.device_id == 0 else self._devices[s.device_id - 1].name,
                               s.name, s.unit, s.dtype) for s in ordered])
         self._send(frames.data(values, schema_hash=hash_, flags=flags,
                                timestamp_mode=_clock.WIRE[self._timestamp_mode],

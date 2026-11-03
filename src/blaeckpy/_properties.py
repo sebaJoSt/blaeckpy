@@ -200,6 +200,12 @@ class _Input(Property):
     def value(self, value) -> None:
         self._value = self._check(value)
 
+    def _check(self, value):
+        raise NotImplementedError
+
+    def _accept(self, text: str) -> int:
+        raise NotImplementedError
+
     def _receive(self, params: list[str]) -> int:
         if not params or (params[0] == "" and self.kind is not ValueKind.TEXT):
             return MISSING_VALUE
