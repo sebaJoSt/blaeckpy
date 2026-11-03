@@ -2,11 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Callable
 from importlib.metadata import version as _version
 
-from . import _clock, _commands, _transport
+from . import _clock, _commands, _properties, _transport
 from ._clock import TimestampMode
+from ._events import Button, Event
+from ._properties import NumberInput, Presentation, Select, Sensor, Switch, TextInput, check_host_name
 from ._signal import ALWAYS, OnChange, Signal, check_name, check_unit, changed, type_and_value
 from .protocol import frames
 from .protocol.schema_hash import schema_hash
@@ -20,6 +23,8 @@ LIBRARY_VERSION = _version("blaeckpy")
 _ACK_OK = 0
 _ACK_UNKNOWN = 1
 _ACK_TRUNCATED = 7
+
+log = logging.getLogger("blaeckpy")
 
 
 class Blaeck:
@@ -55,6 +60,13 @@ class Blaeck:
         self._before_write: Callable[[], None] | None = None
         self._callbacks: dict[str, Callable] = {}
 
+        self._properties: list[_properties.Property] = []
+        self._events: list[Event] = []
+        self._buttons: list[Button] = []
+        self._plain_commands: dict[str, Callable] = {}
+        self._any_command: Callable | None = None
+        self._catalog_dirty = False
+
     # ----- registration -----
 
     def add_signal(self, name: str, type_or_initial, initial=None, *, unit: str | None = None,
@@ -76,9 +88,125 @@ class Blaeck:
         self._timestamp_mode = TimestampMode(mode)
         self._timestamp_clock = clock
 
-    @property
-    def timestamp_mode(self) -> TimestampMode:
-        return self._timestamp_mode
+    # ----- entities: what a host shows and controls -----
+
+    def _host_name(self, name: str, what: str) -> str:
+        """A name a host sends, unique among inputs, sensors, buttons and plain commands."""
+        name = check_host_name(name, what)
+        if (any(p.name == name for p in self._properties) or any(b.name == name for b in self._buttons)
+                or name in self._plain_commands):
+            raise ValueError(f"{name!r} is taken: inputs, sensors, buttons and commands share names")
+        return name
+
+    def _add_property(self, prop):
+        self._properties.append(prop)
+        self._catalog_changed()
+        return prop
+
+    def _catalog_changed(self) -> None:
+        self._catalog_dirty = True
+
+    def add_number_input(self, name: str, type_or_initial, initial=None, *, min=None, max=None,
+                         step=None, mode=None, unit=None, display_name=None, icon=None,
+                         device_class=None, state_class=None, display_precision=None,
+                         category="none", disabled_by_default=False, force_update=False,
+                         write_on_change: float = 0.0, min_interval_ms: int = 100) -> NumberInput:
+        """A number a host sets, within ``min`` and ``max`` and on ``step`` if given."""
+        name = self._host_name(name, "input")
+        presentation = Presentation(number=True, unit=unit, display_name=display_name, icon=icon,
+                                    device_class=device_class, state_class=state_class,
+                                    display_precision=display_precision, category=category,
+                                    disabled_by_default=disabled_by_default, force_update=force_update)
+        return self._add_property(NumberInput(self, 0, name, type_or_initial, initial, min=min, max=max,
+                                              step=step, mode=mode, presentation=presentation,
+                                              write_on_change=write_on_change,
+                                              min_interval_ms=min_interval_ms))
+
+    def add_switch(self, name: str, initial: bool = False, *, display_name=None, icon=None,
+                   device_class=None, category="none", disabled_by_default=False,
+                   force_update=False, min_interval_ms: int = 100) -> Switch:
+        name = self._host_name(name, "switch")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default, force_update=force_update)
+        return self._add_property(Switch(self, 0, name, initial, presentation=presentation,
+                                         min_interval_ms=min_interval_ms))
+
+    def add_select(self, name: str, index: int = 0, *, options, display_name=None, icon=None,
+                   device_class=None, category="none", disabled_by_default=False,
+                   force_update=False, min_interval_ms: int = 100) -> Select:
+        """One of ``options``, held as its index; a host sends the index or the option's name."""
+        name = self._host_name(name, "select")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default, force_update=force_update)
+        return self._add_property(Select(self, 0, name, index, options=options,
+                                         presentation=presentation, min_interval_ms=min_interval_ms))
+
+    def add_text_input(self, name: str, initial: str = "", *, max_length: int = 255, mode=None,
+                       display_name=None, icon=None, device_class=None, category="none",
+                       disabled_by_default=False, force_update=False,
+                       min_interval_ms: int = 100) -> TextInput:
+        name = self._host_name(name, "text input")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default, force_update=force_update)
+        return self._add_property(TextInput(self, 0, name, initial, max_length=max_length, mode=mode,
+                                            presentation=presentation, min_interval_ms=min_interval_ms))
+
+    def add_sensor(self, name: str, source, initial=None, *, get=None, options=None,
+                   write_on_change: float = 0.0, min_interval_ms: int = 100,
+                   **presentation) -> Sensor:
+        """A value a host shows: ``add_sensor("T", signal)`` shows a signal's value,
+        ``add_sensor("T", float, 21.5)`` or ``add_sensor("T", 21.5)`` holds its own,
+        ``add_sensor("T", float, get=fn)`` reads a function, and
+        ``add_sensor("Phase", 0, options=[...])`` holds the index of an option."""
+        name = self._host_name(name, "sensor")
+        return self._add_property(Sensor(self, 0, name, source, initial, get=get, options=options,
+                                         presentation=presentation, write_on_change=write_on_change,
+                                         min_interval_ms=min_interval_ms))
+
+    def add_event(self, name: str, types, *, display_name=None, icon=None, device_class=None,
+                  category="none", disabled_by_default=False) -> Event:
+        """A moment the device reports, of one of ``types``; ``event.write(type)`` reports it."""
+        name = check_name(name, "event")
+        if any(e.name == name and e.device_id == 0 for e in self._events):
+            raise ValueError(f"event {name!r} exists already")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default)
+        event = Event(self, 0, name, types, presentation)
+        self._events.append(event)
+        self._catalog_changed()
+        return event
+
+    def add_button(self, name: str, press: Callable[[], None], *, display_name=None, icon=None,
+                   device_class=None, category="none", disabled_by_default=False) -> Button:
+        """A button a host presses; ``press`` runs with no arguments, parameters are ignored."""
+        name = self._host_name(name, "button")
+        presentation = Presentation(number=False, display_name=display_name, icon=icon,
+                                    device_class=device_class, category=category,
+                                    disabled_by_default=disabled_by_default)
+        button = Button(0, name, press, presentation)
+        self._buttons.append(button)
+        self._catalog_changed()
+        return button
+
+    def on_command(self, name: str, handler: Callable | None = None):
+        """A command a host sends by name and no host lists: ``handler(*params)`` runs with its
+        parameters as text. Works as ``@device.on_command("MOTOR")`` or as a plain call."""
+        def register(fn):
+            if not callable(fn):
+                raise TypeError("a command needs a function")
+            self._plain_commands[self._host_name(name, "command")] = fn
+            return fn
+        return register if handler is None else register(handler)
+
+    def on_any_command(self, fn: Callable):
+        """Sees every command, after its own function: ``fn(command, *params)``. Its answer
+        counts only where nothing took the command: True answers OK, False or None UNKNOWN."""
+        self._any_command = fn
+        return fn
 
     # ----- callbacks: each works as a decorator or a plain call -----
 
@@ -111,7 +239,16 @@ class Blaeck:
     def _call(self, key: str, *args) -> None:
         fn = self._callbacks.get(key)
         if fn is not None:
-            fn(*args)
+            self._safe(fn, *args)
+
+    def _safe(self, fn, *args):
+        """Runs a script's function inside tick(). An exception is logged with its traceback and
+        tick() goes on: one bad command must not end the device."""
+        try:
+            return fn(*args)
+        except Exception:
+            log.exception("%s raised inside tick()", getattr(fn, "__qualname__", repr(fn)))
+            return None
 
     # ----- transport and loop -----
 
@@ -161,6 +298,8 @@ class Blaeck:
         self._answering = True
         try:
             self._answer(_commands.parse(*received))
+            # Send any catalog a handler changed.
+            self._flush_catalogs()
         finally:
             self._answering = False
 
@@ -169,7 +308,7 @@ class Blaeck:
             return
         self._restart_reported = True
         self._send(frames.device_notification(0, frames.DeviceEvent.RESTARTED))
-        self._send(frames.entity_list([]))
+        self._send_entity_list(0)
 
     def _ack(self, cmd: _commands.Command, reason: int) -> None:
         name_hash = frames.fnv1a32(cmd.name.encode("utf-8", "surrogateescape")) if cmd.name else 0
@@ -194,7 +333,7 @@ class Blaeck:
             self._write_devices(msg_id)
         elif name == "BLAECK.WRITE_ENTITIES":
             self._ack(cmd, _ACK_OK)
-            self._send(frames.entity_list([], msg_id))
+            self._send_entity_list(msg_id)
         elif name == "BLAECK.INTERVAL_START":
             interval = _commands.parse_interval(cmd.params[0]) if cmd.params else 0
             self._ack(cmd, _ACK_OK)
@@ -221,6 +360,9 @@ class Blaeck:
             self._data_stopped = True
         elif name == "BLAECK.ENTITIES_START":
             self._entities_stopped = False
+            # Every property counts as changed at the next tick, as DATA_START does for signals.
+            for p in self._properties:
+                p._reporting.valid = False
             self._ack(cmd, _ACK_OK)
             self._call("entities_start")
         elif name == "BLAECK.ENTITIES_STOP":
@@ -229,8 +371,83 @@ class Blaeck:
             self._entities_stopped = True
         else:
             builtin = False
-        if not builtin and name:
-            self._ack(cmd, _ACK_UNKNOWN)
+        self._dispatch(cmd, send_ack=not builtin)
+
+    def _dispatch(self, cmd: _commands.Command, send_ack: bool) -> None:
+        """An input, a button or a plain command, then the catch-all, then the one ack."""
+        if not cmd.name:
+            return
+        reason, matched, written = _ACK_UNKNOWN, False, None
+        prop = next((p for p in self._properties if p.name == cmd.name), None)
+        if prop is not None:
+            matched = True
+            reason = prop._receive(cmd.params)
+            if reason == _ACK_OK:
+                written = prop
+        if not matched:
+            button = next((b for b in self._buttons if b.name == cmd.name), None)
+            if button is not None:
+                matched, reason = True, _ACK_OK
+                self._safe(button.press)
+            elif cmd.name in self._plain_commands:
+                matched, reason = True, _ACK_OK
+                self._safe(self._plain_commands[cmd.name], *cmd.params)
+        if self._any_command is not None:
+            took = self._safe(self._any_command, cmd.name, *cmd.params)
+            if not matched and took is True:
+                matched, reason = True, _ACK_OK
+        if send_ack:
+            self._ack(cmd, reason)
+        if written is not None:
+            if written._on_change is not None:
+                self._safe(written._on_change)
+            self._write_property_frame(written)
+
+    # ----- the entity list, property values and events -----
+
+    def _entries(self) -> list[frames.Entry]:
+        entries = [p._entry(p.value) for p in self._properties]
+        entries += [e._entry() for e in self._events]
+        entries += [b._entry() for b in self._buttons]
+        return entries
+
+    def _send_entity_list(self, msg_id: int) -> None:
+        self._send(frames.entity_list(self._entries(), msg_id))
+        self._catalog_dirty = False
+
+    def _flush_catalogs(self) -> None:
+        if self._catalog_dirty and self._ready():
+            self._send_entity_list(0)
+
+    def _may_write_entities(self) -> bool:
+        return (not self._entities_stopped or self._answering) and self._ready()
+
+    def _write_property_frame(self, prop) -> bool:
+        if not self._may_write_entities():
+            return False
+        # A host must know the property before a value of it arrives.
+        self._flush_catalogs()
+        value = prop.value
+        self._send(frames.property_value(self._properties.index(prop), prop.dtype, value))
+        prop._reporting.valid = True
+        prop._reporting.baseline = value
+        prop._reporting.last_write_ms = self._clock.millis()
+        return True
+
+    def _write_changed_properties(self) -> None:
+        now = self._clock.millis()
+        for prop in self._properties:
+            r = prop._reporting
+            if r.valid and now - r.last_write_ms < r.min_interval_ms:
+                continue
+            if prop._changed() and not self._write_property_frame(prop):
+                return
+
+    def _write_event(self, event: Event, type_index: int) -> None:
+        if not self._may_write_entities():
+            return
+        self._flush_catalogs()
+        self._send(frames.event(self._events.index(event), type_index))
 
     def _set_timed(self, on: bool, interval_ms: int) -> None:
         self._timed = on
@@ -258,7 +475,7 @@ class Blaeck:
         if not self._signals:
             return
         if self._before_write is not None:
-            self._before_write()
+            self._safe(self._before_write)
         self._write_data(msg_id, self._signals, timestamp)
 
     def _write_signal_now(self, signal: Signal, timestamp: int | None) -> None:
@@ -278,8 +495,10 @@ class Blaeck:
             else:
                 self._last_interval_ms += elapsed - elapsed % self._interval_ms
             if self._signals and self._before_write is not None:
-                self._before_write()
+                self._safe(self._before_write)
         if not self._may_write_data():
+            # Property changes don't depend on DATA_STOP; only data waits.
+            self._write_changed_properties()
             return
         if due:
             self._timed_first = False
@@ -298,6 +517,7 @@ class Blaeck:
                 selected.append(s)
             interval_report |= interval
         self._write_data(0, selected, timestamp, interval_report)
+        self._write_changed_properties()
 
     def _write_data(self, msg_id: int, selected: list[Signal], timestamp: int,
                     interval_report: bool = False) -> None:

@@ -8,9 +8,12 @@ from importlib.metadata import version as _version
 
 from ._clock import TimestampMode
 from ._device import Blaeck
+from ._events import Button, Event
+from ._properties import Category, Mode, NumberInput, Select, Sensor, StateClass, Switch, TextInput
 from ._signal import ALWAYS, ANY_CHANGE, OFF, OnChange, Signal
 
 __version__ = _version("blaeckpy")
 
-__all__ = ["ALWAYS", "ANY_CHANGE", "Blaeck", "OFF", "OnChange", "Signal", "TimestampMode",
-           "__version__"]
+__all__ = ["ALWAYS", "ANY_CHANGE", "Blaeck", "Button", "Category", "Event", "Mode", "NumberInput",
+           "OFF", "OnChange", "Select", "Sensor", "Signal", "StateClass", "Switch", "TextInput",
+           "TimestampMode", "__version__"]

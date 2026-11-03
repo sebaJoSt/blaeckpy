@@ -58,12 +58,12 @@ class FakeClock:
         return self.ms * 1000
 
 
-SUPPORTED_STEPS = {"command", "set_signal", "advance_ms", "tick", "write_all"}
+SUPPORTED_STEPS = {"command", "set_signal", "set_property", "advance_ms", "tick", "write_all",
+                   "write_event"}
 
 
 def missing_features(scenario):
-    missing = [key for key in ("properties", "events", "buttons", "commands", "devices")
-               if scenario.get(key)]
+    missing = [key for key in ("devices",) if scenario.get(key)]
     missing += sorted({next(iter(s)) for s in scenario["steps"]} - SUPPORTED_STEPS)
     if scenario.get("timestamp_mode") == "unix":
         missing.append("unix timestamps")
@@ -76,6 +76,47 @@ def interval_policy(spec):
     if spec == "off":
         return OFF
     return OnChange(spec["on_change"])
+
+
+PRESENTATION = ("display_name", "icon", "device_class", "category", "disabled_by_default")
+NUMBER_PRESENTATION = PRESENTATION + ("unit", "state_class", "display_precision", "force_update")
+PY_TYPES = {"bool": bool, "int": int, "float": float, "str": str}
+
+
+def pick(spec, keys):
+    return {k: spec[k] for k in keys if k in spec}
+
+
+def declare_property(device, p, signals):
+    kind, name = p["kind"], p["name"]
+    reporting = {}
+    if "write_on_change" in p:
+        reporting["write_on_change"] = float(p["write_on_change"])
+    if "min_interval_ms" in p:
+        reporting["min_interval_ms"] = p["min_interval_ms"]
+    if kind == "number_input":
+        return device.add_number_input(name, PY_TYPES[p["type"]], p.get("value"),
+                                       **pick(p, ("min", "max", "step", "mode")),
+                                       **pick(p, NUMBER_PRESENTATION), **reporting)
+    if kind == "switch":
+        return device.add_switch(name, p.get("value", False), **pick(p, PRESENTATION + ("force_update",)))
+    if kind == "select":
+        return device.add_select(name, p.get("value", 0), options=p["options"],
+                                 **pick(p, PRESENTATION + ("force_update",)))
+    if kind == "text_input":
+        return device.add_text_input(name, p.get("value", ""), max_length=p["max_length"],
+                                     **pick(p, ("mode",) + PRESENTATION + ("force_update",)))
+    if kind == "sensor":
+        presentation = pick(p, NUMBER_PRESENTATION)
+        if "signal" in p:
+            return device.add_sensor(name, signals[p["signal"]], **presentation, **reporting)
+        if "options" in p:
+            return device.add_sensor(name, p.get("value", 0), options=p["options"], **presentation,
+                                     **reporting)
+        type_ = PY_TYPES[p["type"]]
+        default = {"bool": False, "int": 0, "float": 0.0, "str": ""}[p["type"]]
+        return device.add_sensor(name, type_, p.get("value", default), **presentation, **reporting)
+    raise AssertionError(f"property kind {kind}")
 
 
 def declare(scenario):
@@ -99,11 +140,18 @@ def declare(scenario):
         default = {"bool": False, "int": 0, "float": 0.0, "str": ""}[s["type"]]
         signals[s["name"]] = device.add_signal(s["name"], type_, s.get("value", default),
                                                unit=s.get("unit"), **kwargs)
-    return device, signals
+    properties = {p["name"]: declare_property(device, p, signals) for p in scenario.get("properties", [])}
+    events = {e["name"]: device.add_event(e["name"], e["types"], **pick(e, PRESENTATION))
+              for e in scenario.get("events", [])}
+    for b in scenario.get("buttons", []):
+        device.add_button(b["name"], lambda: None, **pick(b, PRESENTATION))
+    for c in scenario.get("commands", []):
+        device.on_command(c, lambda *params: None)
+    return device, signals, properties, events
 
 
 def play(scenario):
-    device, signals = declare(scenario)
+    device, signals, properties, events = declare(scenario)
     port = FakePort()
     device.begin(port)
     recorded = []
@@ -124,6 +172,11 @@ def play(scenario):
         elif kind == "set_signal":
             signals[arg].value = step["value"]
             device.tick()
+        elif kind == "set_property":
+            properties[arg].value = step["value"]
+            device.tick()
+        elif kind == "write_event":
+            events[arg[0]].write(arg[1])
         elif kind == "advance_ms":
             device._clock.ms += int(arg)
             device.tick()
