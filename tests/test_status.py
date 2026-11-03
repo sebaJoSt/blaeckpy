@@ -1,6 +1,8 @@
 """The status page: what /api shows, the page and its stylesheet, the port, and that tick()
 keeps it current. Also how blaeckpy's log lines look on a terminal."""
 
+import contextlib
+import io
 import json
 import logging
 import socket
@@ -205,3 +207,53 @@ def test_no_colour_with_no_color_or_off_a_terminal(monkeypatch):
     assert not _console.use_color(Tty())
     monkeypatch.delenv("NO_COLOR")
     assert not _console.use_color(object())
+
+
+@contextlib.contextmanager
+def console(monkeypatch, stderr):
+    """blaeckpy's logger as a script without any logging setup has it, on the given stderr. Used
+    in a test's body: pytest adds its own handlers to the root logger once the fixtures have run."""
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    root = logging.getLogger()
+    handlers, root.handlers = root.handlers, []
+    try:
+        with contextlib.redirect_stderr(stderr):
+            yield logging.getLogger("blaeckpy")
+    finally:
+        root.handlers = handlers
+
+
+def test_a_closed_earlier_stderr_doesnt_stop_the_log(monkeypatch, tmp_path):
+    # A real file: flushing a closed StringIO raises nothing.
+    now = io.StringIO()
+    with open(tmp_path / "log", "w") as gone, console(monkeypatch, gone) as log:
+        log.info("one")
+    assert (tmp_path / "log").read_text() == "one\n"
+    with console(monkeypatch, now) as log:
+        log.info("two")
+        log.info("three")
+    assert now.getvalue() == "two\nthree\n"
+
+
+@pytest.mark.parametrize("closed", [True, False], ids=["closed", "none"])
+def test_a_stderr_that_cant_be_written_doesnt_stop_the_log(monkeypatch, closed):
+    stderr = io.StringIO() if closed else None
+    if closed:
+        stderr.close()
+    with console(monkeypatch, stderr) as log:
+        log.info("one")
+        log.info("two")
+
+
+def test_colour_goes_with_the_stderr_of_the_moment(monkeypatch):
+    class Tty(io.StringIO):
+        def isatty(self):
+            return True
+
+    tty, plain = Tty(), io.StringIO()
+    with console(monkeypatch, tty) as log:
+        log.info("one")
+    with console(monkeypatch, plain) as log:
+        log.info("two")
+    assert "\033[" in tty.getvalue() and plain.getvalue() == "two\n"

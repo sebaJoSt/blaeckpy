@@ -75,17 +75,30 @@ class ConsoleHandler(logging.StreamHandler):
     logging, and blaeckpy's messages reach it through propagation instead."""
 
     def __init__(self) -> None:
-        super().__init__(sys.stderr)
-        self.setFormatter(_Formatter(use_color(sys.stderr)))
+        logging.Handler.__init__(self)
+        self._color_for: object = self  # No stderr yet, so the first message decides.
+
+    @property
+    def stream(self):  # type: ignore[override]
+        # Whatever stderr is now: a script or a test may have swapped it, and closed the old one.
+        return sys.stderr
 
     def emit(self, record: logging.LogRecord) -> None:
-        if logging.getLogger().handlers:
-            return
-        # Whatever stderr is now: a script or a test may have swapped it since.
-        if self.stream is not sys.stderr:
-            self.setStream(sys.stderr)
+        if not logging.getLogger().handlers:
+            super().emit(record)
+
+    def format(self, record: logging.LogRecord) -> str:
+        if self._color_for is not sys.stderr:
+            self._color_for = sys.stderr
             self.setFormatter(_Formatter(use_color(sys.stderr)))
-        super().emit(record)
+        return super().format(record)
+
+    def handleError(self, record: logging.LogRecord) -> None:
+        # Its report goes to the stderr that just failed, and a log line must not stop the device.
+        try:
+            super().handleError(record)
+        except Exception:
+            pass
 
 
 def styled(codes: str) -> dict:
