@@ -55,7 +55,7 @@ EXPECTED = [
     ("<#7:BLAECK.GET_DEVICES>", frames.device_notification(0, frames.DeviceEvent.RESTARTED)),
     ("<#7:BLAECK.GET_DEVICES>", frames.entity_list(ENTITIES)),
     ("<#7:BLAECK.GET_DEVICES>", _ack("BLAECK.GET_DEVICES", message_id=7)),
-    ("<#7:BLAECK.GET_DEVICES>", frames.device_list("blaeck", "7.0.0", 127, [
+    ("<#7:BLAECK.GET_DEVICES>", frames.device_list("blaeck", "1.0.0", 127, [
         frames.DeviceEntry(0, "Greenhouse", "n/a", "1.0",
                            [("Temperature", "", DType.FLOAT), ("Count", "", DType.INT64),
                             ("Label", "", DType.TEXT), ("Flag", "", DType.BOOL)]),

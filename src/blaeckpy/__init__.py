@@ -1,6 +1,6 @@
 """blaeckpy: the Python counterpart of the blaeck Arduino library.
 
-Speaks protocol v2 as blaeck 7 does, so a host such as Loggbok cannot tell the two apart.
+Speaks protocol v2 as blaeck does, so a host such as Loggbok cannot tell the two apart.
 In development: signals, data, inputs, sensors, selects, events, buttons, commands and
 sub-devices work, over a serial port or TCP.
 """

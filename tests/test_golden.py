@@ -21,7 +21,7 @@ GOLDEN = Path(__file__).parent / "golden"
 SCENARIOS = sorted((GOLDEN / "scenarios").glob("*.json"))
 
 # What blaeck's golden program declares, in place of blaeckpy's own name and version.
-BLAECK_LIBRARY = ("blaeck", "7.0.0")
+BLAECK_LIBRARY = ("blaeck", "1.0.0")
 
 
 class FakePort:
