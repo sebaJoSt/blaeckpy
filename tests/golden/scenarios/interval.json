@@ -1,0 +1,33 @@
+{
+  "description": "Interval reports when ticks come late or early: the next report counts from the interval's own grid, not from the late tick; a skipped interval is not made up; an interval of 0 reports every tick; a restarted interval reports at once.",
+  "board": {"name": "Clock"},
+  "timestamp_mode": "micros",
+  "signals": [
+    {"name": "Value", "type": "int", "value": 1},
+    {"name": "Level", "type": "float", "value": 0.0, "write_at_interval": "off", "write_on_change": 1.0, "min_interval_ms": 300}
+  ],
+  "steps": [
+    {"command": "<BLAECK.GET_DEVICES>"},
+    {"command": "<BLAECK.DATA_START>"},
+    {"command": "<BLAECK.INTERVAL_START,1000>"},
+    {"advance_ms": 999},
+    {"advance_ms": 501},
+    {"advance_ms": 600},
+    {"advance_ms": 899},
+    {"advance_ms": 1},
+    {"advance_ms": 2500},
+    {"advance_ms": 400},
+    {"set_signal": "Level", "value": 5.0},
+    {"set_signal": "Level", "value": 10.0},
+    {"advance_ms": 299},
+    {"advance_ms": 1},
+    {"set_signal": "Level", "value": 10.5},
+    {"advance_ms": 300},
+    {"command": "<BLAECK.INTERVAL_START,0>"},
+    {"tick": true},
+    {"advance_ms": 1},
+    {"command": "<BLAECK.INTERVAL_START,250>"},
+    {"advance_ms": 249},
+    {"advance_ms": 1}
+  ]
+}
