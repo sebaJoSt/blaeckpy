@@ -4,7 +4,7 @@
   "signals": [{"name": "Temperature", "type": "float", "value": 21.0}],
   "devices": [
     {"name": "Pump controller", "fw_version": "1.0",
-     "signals": [{"name": "Flow", "type": "float", "value": 2.5}],
+     "signals": [{"name": "Flow", "type": "float", "value": 2.5, "unit": "L/min"}],
      "properties": [{"kind": "number_input", "name": "PumpSpeed", "type": "int", "value": 0, "min": 0, "max": 100}],
      "events": [{"name": "Alarms", "types": ["restarted"]}]}
   ],

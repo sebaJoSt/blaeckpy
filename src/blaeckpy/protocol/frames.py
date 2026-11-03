@@ -92,6 +92,9 @@ INTERVAL_REPORT = 0x04
 
 TEXT_MAX = 255
 
+# What a device drops around a command parameter, an option or an event type.
+TRIM = " \t\r\n"
+
 
 # ----- Field encoders -----
 
@@ -120,6 +123,23 @@ def string(text: str) -> bytes:
     return data + b"\x00"
 
 
+def encode_option(option: str) -> str:
+    """An option as the entity list sends it: a host splits the list on its commas and then
+    decodes each one, so a comma or percent sign inside an option is percent-encoded."""
+    return option.replace("%", "%25").replace(",", "%2C")
+
+
+def check_listed(items: Sequence[str], what: str) -> None:
+    """Options and event types: at least one, none blank, none with outer spaces."""
+    if not items:
+        raise ValueError(f"needs at least one {what}")
+    for item in items:
+        if not item.strip(TRIM):
+            raise ValueError(f"a blank {what}")
+        if item != item.strip(TRIM):
+            raise ValueError(f"{what} {item!r} has leading or trailing spaces")
+
+
 def text_value(text: str) -> bytes:
     """A DTYPE 10 value: a 1-byte length, then that many UTF-8 bytes."""
     data = text.encode("utf-8")
@@ -146,13 +166,14 @@ def value(dtype: int, v: object) -> bytes:
 
 
 class DeviceEntry(NamedTuple):
-    """One device in the device list: the board (id 0) or a sub-device."""
+    """One device in the device list: the board (id 0) or a sub-device. Its signals are
+    ``(name, unit, dtype)``, the unit "" for none."""
 
     device_id: int
     name: str
     hw_version: str
     fw_version: str
-    signals: Sequence[tuple[str, int]] = ()
+    signals: Sequence[tuple[str, str, int]] = ()
     parent_id: int = 0
     not_responding: bool = False
     restarted: bool = False
@@ -165,7 +186,7 @@ def device_list(
     devices: Sequence[DeviceEntry],
     message_id: int = 0,
 ) -> bytes:
-    """The board and its sub-devices, each with its signals as ``(name, dtype)`` pairs."""
+    """The board and its sub-devices, each with its signals as ``(name, unit, dtype)``."""
     if not 1 <= len(devices) <= 255:
         raise ValueError(f"{len(devices)} devices; a device list holds 1 to 255")
     fields = bytearray()
@@ -176,8 +197,8 @@ def device_list(
         fields += u8(d.device_id) + u8(d.parent_id) + u16(0) + u8(state)
         fields += string(d.name) + string(d.hw_version) + string(d.fw_version)
         fields += u16(len(d.signals))
-        for name, dtype in d.signals:
-            fields += string(name) + u8(dtype)
+        for name, unit, dtype in d.signals:
+            fields += string(name) + string(unit) + u8(dtype)
     return envelope.build(Key.DEVICE_LIST, message_id, bytes(fields))
 
 
@@ -331,9 +352,8 @@ def property_entry(
 
     fields = string(name) + u8(value_kind) + u32(flags) + u8(dtype) + value(dtype, v)
     if options is not None:
-        if not options or any(not o.strip() for o in options):
-            raise ValueError("an enum needs at least one option, none blank")
-        fields += string(",".join(options))
+        check_listed(options, "option")
+        fields += string(",".join(encode_option(o) for o in options))
     if text_max_len is not None:
         fields += u8(text_max_len)
     return Entry(device_id, EntryKind.PROPERTY, fields + tail)
@@ -355,8 +375,7 @@ def event_entry(
     disabled_by_default: bool = False,
 ) -> Entry:
     """An event with the closed list of its types; a type's position is its index."""
-    if not types or any(not t.strip() for t in types):
-        raise ValueError("an event needs at least one type, none blank")
+    check_listed(types, "event type")
     shown_flags, shown = _presentation(display_name, icon, device_class, (0x1, 0x2, 0x4))
     flags = shown_flags | _moment_flags(category, disabled_by_default)
     fields = string(name) + u16(flags) + shown + u16(len(types))

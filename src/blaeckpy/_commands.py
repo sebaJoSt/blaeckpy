@@ -80,7 +80,8 @@ def _text(data: bytes) -> str:
 
 def parse(raw: bytes, overflowed: bool) -> Command:
     """Splits a command as blaeck does: one #id: prefix at most, the name before the first comma,
-    then up to ten parameters, each percent-decoded."""
+    then up to ten parameters, each percent-decoded and then stripped of outer spaces, tabs, CR
+    and LF."""
     cmd = Command(raw, truncated=overflowed)
     if not raw:
         return cmd
@@ -106,7 +107,8 @@ def parse(raw: bytes, overflowed: bool) -> Command:
     if len(fields) > PARAM_MAX:
         fields = fields[:PARAM_MAX]
         cmd.truncated = True
-    cmd.params = [_text(_percent_decode(f)) for f in fields]
+    # Decoded first, then trimmed, so an encoded space at either end goes too.
+    cmd.params = [_text(_percent_decode(f).strip(b" \t\r\n")) for f in fields]
     return cmd
 
 

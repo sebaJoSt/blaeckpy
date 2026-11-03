@@ -80,6 +80,17 @@ def checked(type_: type, value: object, what: str = "value") -> object:
     return value
 
 
+def check_unit(unit: object) -> str:
+    """A signal's unit: "" for none, otherwise text without control characters."""
+    if unit is None:
+        return ""
+    if not isinstance(unit, str):
+        raise TypeError(f"a unit is a str, not {type(unit).__name__}")
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in unit):
+        raise ValueError(f"unit {unit!r} holds a control character")
+    return unit
+
+
 def check_name(name: object, what: str) -> str:
     if not isinstance(name, str):
         raise TypeError(f"a {what} name is a str, not {type(name).__name__}")
@@ -134,10 +145,11 @@ class Signal:
     """A value the device logs. Set :attr:`value`; the device sends it when it is due."""
 
     def __init__(self, device, device_id: int, name: str, type_: type, value: object,
-                 write_at_interval, write_on_change, min_interval_ms: int) -> None:
+                 write_at_interval, write_on_change, min_interval_ms: int, unit: str = "") -> None:
         self._device = device
         self.device_id = device_id
         self.name = name
+        self.unit = unit
         self.type = type_
         self.dtype = _DTYPES[type_]
         self._value = value

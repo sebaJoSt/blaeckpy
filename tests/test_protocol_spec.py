@@ -30,8 +30,27 @@ def test_a_ten_byte_text_has_its_length_escaped():
 
 
 def test_schema_hash_worked_example():
-    signals = [(None, "Temperature", DType.FLOAT), ("Zone A", "Flow", DType.ULONG)]
-    assert schema_hash(signals) == 0xE658
+    signals = [(None, "Temperature", "°C", DType.FLOAT), ("Zone A", "Flow", "L/min", DType.ULONG)]
+    assert schema_hash(signals) == 0x5166
+
+
+def test_a_signal_without_a_unit_still_hashes_its_empty_unit():
+    assert schema_hash([(None, "T", "", DType.FLOAT)]) != schema_hash([(None, "T", "x", DType.FLOAT)])
+    from blaeckpy.protocol.schema_hash import crc16_xmodem
+    assert schema_hash([(None, "T", "", DType.FLOAT)]) == crc16_xmodem(b"T\x00\x00\x08")
+
+
+def test_options_are_percent_encoded_one_by_one():
+    entry = frames.property_entry(0, "Mode", frames.ValueKind.ENUM, DType.BYTE, 0, writable=True,
+                                  options=["a,b", "50%", "c"])
+    assert b"a%2Cb,50%25,c\x00" in entry.fields
+
+
+@pytest.mark.parametrize("options", [[], ["a", " b"], ["a", "b "], ["a", "  "]])
+def test_options_have_no_outer_spaces_and_none_is_blank(options):
+    with pytest.raises(ValueError):
+        frames.property_entry(0, "Mode", frames.ValueKind.ENUM, DType.BYTE, 0, writable=True,
+                              options=options)
 
 
 def test_no_signals_hash_to_zero():

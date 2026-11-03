@@ -44,11 +44,11 @@ ENTITIES = [
 ]
 
 SIGNALS = [
-    (None, "Temperature", DType.FLOAT),
-    (None, "Count", DType.INT64),
-    (None, "Label", DType.TEXT),
-    (None, "Flag", DType.BOOL),
-    ("Pump controller", "Flow", DType.FLOAT),
+    (None, "Temperature", "", DType.FLOAT),
+    (None, "Count", "", DType.INT64),
+    (None, "Label", "", DType.TEXT),
+    (None, "Flag", "", DType.BOOL),
+    ("Pump controller", "Flow", "", DType.FLOAT),
 ]
 
 EXPECTED = [
@@ -57,9 +57,9 @@ EXPECTED = [
     ("<#7:BLAECK.GET_DEVICES>", _ack("BLAECK.GET_DEVICES", message_id=7)),
     ("<#7:BLAECK.GET_DEVICES>", frames.device_list("blaeck", "7.0.0", 127, [
         frames.DeviceEntry(0, "Greenhouse", "n/a", "1.0",
-                           [("Temperature", DType.FLOAT), ("Count", DType.INT64),
-                            ("Label", DType.TEXT), ("Flag", DType.BOOL)]),
-        frames.DeviceEntry(1, "Pump controller", "Simulated", "1.0", [("Flow", DType.FLOAT)]),
+                           [("Temperature", "", DType.FLOAT), ("Count", "", DType.INT64),
+                            ("Label", "", DType.TEXT), ("Flag", "", DType.BOOL)]),
+        frames.DeviceEntry(1, "Pump controller", "Simulated", "1.0", [("Flow", "", DType.FLOAT)]),
     ], message_id=7)),
     ("<BLAECK.WRITE_ENTITIES>", _ack("BLAECK.WRITE_ENTITIES")),
     ("<BLAECK.WRITE_ENTITIES>", frames.entity_list(ENTITIES)),

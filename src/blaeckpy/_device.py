@@ -7,7 +7,7 @@ from importlib.metadata import version as _version
 
 from . import _clock, _commands, _transport
 from ._clock import TimestampMode
-from ._signal import ALWAYS, OnChange, Signal, check_name, changed, type_and_value
+from ._signal import ALWAYS, OnChange, Signal, check_name, check_unit, changed, type_and_value
 from .protocol import frames
 from .protocol.schema_hash import schema_hash
 
@@ -57,16 +57,17 @@ class Blaeck:
 
     # ----- registration -----
 
-    def add_signal(self, name: str, type_or_initial, initial=None, *, write_at_interval=ALWAYS,
-                   write_on_change: float | None = None, min_interval_ms: int = 100) -> Signal:
+    def add_signal(self, name: str, type_or_initial, initial=None, *, unit: str | None = None,
+                   write_at_interval=ALWAYS, write_on_change: float | None = None,
+                   min_interval_ms: int = 100) -> Signal:
         """A value the device logs: ``add_signal("T", float)``, ``add_signal("T", float, 21.5)``
-        or ``add_signal("T", 21.5)``."""
+        or ``add_signal("T", 21.5)``. ``unit`` in Home Assistant's spelling, such as "°C"."""
         name = check_name(name, "signal")
         if any(s.name == name and s.device_id == 0 for s in self._signals):
             raise ValueError(f"signal {name!r} exists already")
         type_, value = type_and_value(type_or_initial, initial)
         signal = Signal(self, 0, name, type_, value, write_at_interval, write_on_change,
-                        min_interval_ms)
+                        min_interval_ms, check_unit(unit))
         self._signals.append(signal)
         return signal
 
@@ -239,7 +240,7 @@ class Blaeck:
 
     def _write_devices(self, msg_id: int) -> None:
         board = frames.DeviceEntry(0, self.name, self.hw_version, self.fw_version,
-                                   [(s.name, s.dtype) for s in self._signals],
+                                   [(s.name, s.unit, s.dtype) for s in self._signals],
                                    restarted=not self._restart_reported)
         self._send(frames.device_list(LIBRARY_NAME, LIBRARY_VERSION,
                                       _commands.COMMAND_MAX_CHARS - 1, [board], msg_id))
@@ -310,7 +311,7 @@ class Blaeck:
             flags |= frames.INTERVAL_REPORT
         values = [(i, s.dtype, s.value) for i, s in enumerate(self._signals) if id(s) in chosen]
         has_ts = self._timestamp_mode is not TimestampMode.NONE
-        hash_ = schema_hash([(None, s.name, s.dtype) for s in self._signals])
+        hash_ = schema_hash([(None, s.name, s.unit, s.dtype) for s in self._signals])
         self._send(frames.data(values, schema_hash=hash_, flags=flags,
                                timestamp_mode=self._timestamp_mode,
                                timestamp=timestamp if has_ts else None, message_id=msg_id))

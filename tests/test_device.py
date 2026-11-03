@@ -95,3 +95,20 @@ def test_callbacks_work_as_decorator_and_as_call():
 
     assert started is not None
     assert device.on_data_stop(print) is print
+
+
+def test_a_signal_brings_its_unit():
+    assert Blaeck().add_signal("T", float, unit="°C").unit == "°C"
+    assert Blaeck().add_signal("T", float).unit == ""
+    with pytest.raises(ValueError):
+        Blaeck().add_signal("T", float, unit="°\nC")
+
+
+@pytest.mark.parametrize(
+    "raw, params",
+    [(b"Label, Hallway %20", ["Hallway"]), (b"Label,%09a b%0D%0A", ["a b"]), (b"X, ,y", ["", "y"]),
+     (b"X,a%2Cb", ["a,b"]), (b"X,a%00b", ["a"])],
+)
+def test_parameters_are_decoded_then_trimmed(raw, params):
+    from blaeckpy._commands import parse
+    assert parse(raw, False).params == params

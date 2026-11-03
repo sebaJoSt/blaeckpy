@@ -97,7 +97,8 @@ def declare(scenario):
             kwargs["write_on_change"] = ANY_CHANGE if delta == "any" else float(delta)
             kwargs["min_interval_ms"] = s.get("min_interval_ms", 100)
         default = {"bool": False, "int": 0, "float": 0.0, "str": ""}[s["type"]]
-        signals[s["name"]] = device.add_signal(s["name"], type_, s.get("value", default), **kwargs)
+        signals[s["name"]] = device.add_signal(s["name"], type_, s.get("value", default),
+                                               unit=s.get("unit"), **kwargs)
     return device, signals
 
 
