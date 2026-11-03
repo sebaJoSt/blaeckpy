@@ -33,7 +33,7 @@ Homepage = "https://github.com/sebaJoSt/blaeckpy"
 test = ["pytest>=8", "mypy>=1.11"]
 
 [tool.setuptools.package-data]
-blaeckpy = ["py.typed"]
+blaeckpy = ["py.typed", "static/*"]
 
 [tool.mypy]
 files = ["src"]

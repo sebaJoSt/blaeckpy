@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>$device_name · blaeckpy</title>
+  <link rel="stylesheet" href="/pico.min.css">
+  <style>
+    :root { --pico-font-size: 87.5%; }
+    .status-dot { display:inline-block; width:.7em; height:.7em; border-radius:50%; }
+    .status-dot.up { background:#22c55e; }
+    .status-dot.down { background:#ef4444; }
+    nav a { cursor:pointer; text-decoration:none; }
+    #theme-toggle { color:inherit; user-select:none; }
+    #theme-toggle svg { width:1.5rem; height:1.5rem; vertical-align:middle; }
+    [data-theme="dark"] #theme-toggle { color:#f0c040; }
+    [data-theme="dark"] #theme-toggle svg { width:1.8rem; height:1.8rem; }
+    [data-theme="light"] #theme-toggle svg { position:relative; top:-2px; }
+    #server-stopped { text-align:center; padding:.6rem; font-weight:bold; position:sticky; top:0; z-index:999; }
+    [data-theme="light"] #server-stopped { background:#fef2f2; color:#991b1b; border-bottom:1px solid #fecaca; }
+    [data-theme="dark"] #server-stopped { background:#450a0a; color:#fca5a5; border-bottom:1px solid #7f1d1d; }
+    #paused { position:fixed; right:1rem; bottom:1rem; z-index:998; padding:.4rem .8rem; border-radius:.4rem;
+              font-size:.85rem; box-shadow:0 2px 8px rgba(0,0,0,.15); pointer-events:none; }
+    [data-theme="light"] #paused { background:#fffbeb; color:#92400e; border:1px solid #fde68a; }
+    [data-theme="dark"] #paused { background:#451a03; color:#fcd34d; border:1px solid #78350f; }
+    footer { text-align:center; font-size:1.2rem; opacity:.65; padding-top:1rem; }
+    article { margin-bottom:1rem; padding:1.5rem; }
+    article h3 { margin-bottom:1.2rem; }
+    article h4 { margin:1.2rem 0 .6rem; font-size:1rem; }
+    #device-info-table td:first-child { width:30%; }
+    #device-info-table td:last-child { width:70%; }
+    .signal-table th:nth-child(1), .signal-table td:nth-child(1) { width:4%; }
+    .signal-table th:nth-child(2), .signal-table td:nth-child(2) { width:31%; }
+    .signal-table th:nth-child(3), .signal-table td:nth-child(3) { width:13%; }
+    .signal-table th:nth-child(4), .signal-table td:nth-child(4) { width:52%; }
+    .entity-table th:nth-child(1), .entity-table td:nth-child(1) { width:35%; }
+    .entity-table th:nth-child(2), .entity-table td:nth-child(2) { width:13%; }
+    .entity-table th:nth-child(3), .entity-table td:nth-child(3) { width:52%; }
+    .muted { opacity:.6; }
+    article table { margin-bottom:0; }
+  </style>
+</head>
+<body>
+  <div id="server-stopped" hidden>Device stopped. This page is no longer updating</div>
+  <div id="paused" hidden>Updates paused while text is selected</div>
+  <header class="container" style="padding-top:4.5rem; margin-bottom:0;">
+    <nav>
+      <ul>
+        <li>
+          <hgroup style="padding-left:10px;">
+            <h1 style="margin:0;">blaeckpy</h1>
+            <p style="margin:0;">v$lib_version</p>
+          </hgroup>
+        </li>
+      </ul>
+      <ul>
+        <li><a id="theme-toggle" aria-label="Toggle color scheme" style="padding-right:10px;"></a></li>
+      </ul>
+    </nav>
+  </header>
+
+  <main class="container">
+    <!-- Device Info -->
+    <article>
+      <h3>Device Info</h3>
+      <table id="device-info-table">
+        <tbody>
+          <tr><td><strong>Device</strong></td><td id="d-name"></td></tr>
+          <tr><td><strong>HW Version</strong></td><td id="d-hw"></td></tr>
+          <tr><td><strong>FW Version</strong></td><td id="d-fw"></td></tr>
+          <tr><td><strong>Connection</strong></td><td id="d-connection"></td></tr>
+          <tr><td><strong>Uptime</strong></td><td id="d-uptime"></td></tr>
+          <tr><td><strong>Data</strong></td><td id="d-data"></td></tr>
+          <tr><td><strong>Entities</strong></td><td id="d-entities"></td></tr>
+          <tr id="d-timestamp-row" hidden><td><strong>Timestamp</strong></td><td id="d-timestamp"></td></tr>
+          <tr><td><strong>Last Command</strong></td><td id="d-last-command"></td></tr>
+        </tbody>
+      </table>
+    </article>
+
+    <!-- TCP clients -->
+    <article id="clients" hidden>
+      <h3>Clients (<span id="c-count">0</span>)</h3>
+      <table>
+        <thead><tr><th>Client</th><th>Address</th><th>Role</th></tr></thead>
+        <tbody id="client-body"></tbody>
+      </table>
+    </article>
+
+    <!-- The board and its sub-devices -->
+    <div id="devices"></div>
+  </main>
+
+  <footer class="container">
+    Made with ☕ by Sebastian Strobl
+    <br>
+    <a href="https://github.com/sebaJoSt/blaeckpy" target="_blank" rel="noopener">
+      github.com/sebaJoSt/blaeckpy
+    </a>
+    &middot; Auto-refresh: 1 s
+  </footer>
+
+  <script>
+  // -- Theme toggle --
+  (function() {
+    const html = document.documentElement;
+    const stored = localStorage.getItem('blaeckpy-theme');
+    html.dataset.theme = stored || (matchMedia('(prefers-color-scheme:dark)').matches ? 'dark' : 'light');
+    const btn = document.getElementById('theme-toggle');
+    const sunSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 19a1 1 0 0 1 .993 .883l.007 .117v1a1 1 0 0 1 -1.993 .117l-.007 -.117v-1a1 1 0 0 1 1 -1z" stroke-width="0" fill="currentColor"/><path d="M18.313 16.91l.094 .083l.7 .7a1 1 0 0 1 -1.32 1.497l-.094 -.083l-.7 -.7a1 1 0 0 1 1.218 -1.567l.102 .07z" stroke-width="0" fill="currentColor"/><path d="M7.007 16.993a1 1 0 0 1 .083 1.32l-.083 .094l-.7 .7a1 1 0 0 1 -1.497 -1.32l.083 -.094l.7 -.7a1 1 0 0 1 1.414 0z" stroke-width="0" fill="currentColor"/><path d="M4 11a1 1 0 0 1 .117 1.993l-.117 .007h-1a1 1 0 0 1 -.117 -1.993l.117 -.007h1z" stroke-width="0" fill="currentColor"/><path d="M21 11a1 1 0 0 1 .117 1.993l-.117 .007h-1a1 1 0 0 1 -.117 -1.993l.117 -.007h1z" stroke-width="0" fill="currentColor"/><path d="M6.213 4.81l.094 .083l.7 .7a1 1 0 0 1 -1.32 1.497l-.094 -.083l-.7 -.7a1 1 0 0 1 1.217 -1.567l.102 .07z" stroke-width="0" fill="currentColor"/><path d="M19.107 4.893a1 1 0 0 1 .083 1.32l-.083 .094l-.7 .7a1 1 0 0 1 -1.497 -1.32l.083 -.094l.7 -.7a1 1 0 0 1 1.414 0z" stroke-width="0" fill="currentColor"/><path d="M12 2a1 1 0 0 1 .993 .883l.007 .117v1a1 1 0 0 1 -1.993 .117l-.007 -.117v-1a1 1 0 0 1 1 -1z" stroke-width="0" fill="currentColor"/><path d="M12 7a5 5 0 1 1 -4.995 5.217l-.005 -.217l.005 -.217a5 5 0 0 1 4.995 -4.783z" stroke-width="0" fill="currentColor"/></svg>';
+    const moonSvg = '<svg xmlns="http://www.w3.org/2000/svg" width="1em" height="1em" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" fill="none" stroke-linecap="round" stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M12 1.992a10 10 0 1 0 9.236 13.838c.341 -.82 -.476 -1.644 -1.298 -1.31a6.5 6.5 0 0 1 -6.864 -10.787l.077 -.08c.551 -.63 .113 -1.653 -.758 -1.653h-.266l-.068 -.006l-.06 -.002z" stroke-width="0" fill="currentColor"/></svg>';
+    function updateIcon() { btn.innerHTML = html.dataset.theme === 'dark' ? sunSvg : moonSvg; }
+    updateIcon();
+    btn.onclick = function(e) {
+      e.preventDefault();
+      html.dataset.theme = html.dataset.theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('blaeckpy-theme', html.dataset.theme);
+      updateIcon();
+    };
+  })();
+
+  // -- Rendering --
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  // Only touch what changed: rewriting the same text would still clear a selection in it.
+  function setText(id, v) {
+    var el = document.getElementById(id);
+    if (el && el.textContent !== String(v)) el.textContent = v;
+  }
+  function setHtml(el, html) {
+    if (el.dataset.html !== html) { el.innerHTML = html; el.dataset.html = html; return true; }
+    return false;
+  }
+  // While text is selected the page holds still, so it can be copied.
+  function selecting() {
+    var s = window.getSelection();
+    return s && !s.isCollapsed && s.toString().length > 0;
+  }
+
+  function ago(seconds) {
+    var s = Math.max(0, Math.round(seconds));
+    if (s < 60) return s + ' s ago';
+    var m = Math.floor(s / 60);
+    if (m < 60) return m + ' min ago';
+    var h = Math.floor(m / 60);
+    if (h < 24) return h + ' h ' + (m % 60) + ' min ago';
+    return Math.floor(h / 24) + ' d ' + (h % 24) + ' h ago';
+  }
+
+  function withUnit(value, unit) {
+    var text = String(value);
+    return unit ? text + ' ' + unit : text;
+  }
+
+  function signalRows(signals) {
+    if (signals.length === 0) return '<tr><td colspan="4"><em>No signals</em></td></tr>';
+    var rows = '';
+    signals.forEach(function(s, i) {
+      rows += '<tr><td>' + (i + 1) + '</td><td>' + esc(s.name) + '</td><td>' + esc(s.type) +
+              '</td><td>' + esc(withUnit(s.value, s.unit)) + '</td></tr>';
+    });
+    return rows;
+  }
+
+  function entityRows(entities, now) {
+    if (entities.length === 0) return '<tr><td colspan="3"><em>No entities</em></td></tr>';
+    var rows = '';
+    entities.forEach(function(e) {
+      var value;
+      if (e.kind === 'Event') {
+        value = e.value === null ? '<span class="muted">' + esc(e.types.join(', ')) + '</span>'
+                                 : esc(e.value) + ' <span class="muted">(' + ago(now - e.at) + ')</span>';
+      } else if (e.kind === 'Button') {
+        value = '';
+      } else {
+        value = esc(withUnit(e.value, e.unit));
+      }
+      rows += '<tr><td>' + esc(e.name) + '</td><td>' + esc(e.kind) + '</td><td>' + value + '</td></tr>';
+    });
+    return rows;
+  }
+
+  // Which device sections the user closed, so a refresh keeps them closed.
+  var closed = {};
+
+  function renderDevices(devices, now) {
+    var html = '';
+    devices.forEach(function(d, idx) {
+      var dot = idx === 0 ? '' :
+        ' &nbsp; <span class="status-dot ' + (d.missing ? 'down' : 'up') + '" title="' +
+        (d.missing ? 'Not responding' : 'Responding') + '"></span>';
+      var title = idx === 0 ? esc(d.name) : esc(d.name) + ' <span class="muted">(sub-device)</span>';
+      html += '<article><details data-key="' + esc(d.name) + '"' + (closed[d.name] ? '' : ' open') + '>' +
+        '<summary><strong>' + title + '</strong> <span class="muted">· Signals (' + d.signals.length + ') · Entities (' + d.entities.length + ')</span>' + dot + '</summary>' +
+        (idx === 0 ? '' : '<p class="muted">HW ' + esc(d.hw_version) + ' · FW ' + esc(d.fw_version) + '</p>') +
+        '<h4>Signals</h4><table class="signal-table striped"><thead><tr><th>#</th><th>Name</th><th>Type</th><th>Value</th></tr></thead>' +
+        '<tbody>' + signalRows(d.signals) + '</tbody></table>' +
+        '<h4>Entities</h4><table class="entity-table striped"><thead><tr><th>Name</th><th>Kind</th><th>Value</th></tr></thead>' +
+        '<tbody>' + entityRows(d.entities, now) + '</tbody></table>' +
+        '</details></article>';
+    });
+    var container = document.getElementById('devices');
+    if (!setHtml(container, html)) return;
+    container.querySelectorAll('details').forEach(function(el) {
+      el.addEventListener('toggle', function() { closed[el.dataset.key] = !el.open; });
+    });
+  }
+
+  function render(d) {
+    setText('d-name', d.device.name);
+    setText('d-hw', d.device.hw_version);
+    setText('d-fw', d.device.fw_version);
+    setText('d-connection', d.connection);
+    setText('d-uptime', d.uptime);
+    setText('d-data', d.data);
+    setText('d-entities', d.entities ? 'Running' : 'Stopped');
+    document.getElementById('d-timestamp-row').hidden = d.timestamp_mode === 'none';
+    setText('d-timestamp', d.timestamp_mode);
+    setText('d-last-command', d.last_command === null ? 'None yet'
+      : d.last_command.name + ' (' + ago(d.now - d.last_command.at) + ')');
+
+    var clients = document.getElementById('clients');
+    clients.hidden = d.clients === null;
+    if (d.clients !== null) {
+      setText('c-count', d.clients.length);
+      var rows = '';
+      if (d.clients.length === 0) {
+        rows = '<tr><td colspan="3"><em>No clients connected</em></td></tr>';
+      } else {
+        d.clients.forEach(function(c) {
+          rows += '<tr><td>' + c.slot + '</td><td>' + esc(c.address) + '</td><td>' + esc(c.role) + '</td></tr>';
+        });
+      }
+      setHtml(document.getElementById('client-body'), rows);
+    }
+    renderDevices(d.devices, d.now);
+  }
+
+  // -- Auto-refresh via /api --
+  var pollTimer = null;
+  var stopped = false;
+
+  function refresh() {
+    fetch('/api', { cache: 'no-store' }).then(function(r) { return r.json(); }).then(function(d) {
+      if (stopped) {
+        location.reload();
+        return;
+      }
+      if (selecting()) {
+        // Shown only once a refresh was held back, so a quick selection never flashes it.
+        document.getElementById('paused').hidden = false;
+      } else {
+        render(d);
+      }
+    }, function() {
+      if (!stopped) {
+        stopped = true;
+        document.getElementById('paused').hidden = true;
+        document.getElementById('server-stopped').hidden = false;
+        document.title = '(stopped) ' + document.title;
+        // Slow down to 5 s retries
+        clearInterval(pollTimer);
+        pollTimer = setInterval(refresh, 5000);
+      }
+    });
+  }
+
+  refresh();
+  pollTimer = setInterval(refresh, 1000);
+
+  // The paused note goes as soon as the selection does; it appears only from refresh().
+  document.addEventListener('selectionchange', function() {
+    if (!selecting()) document.getElementById('paused').hidden = true;
+  });
+  </script>
+</body>
+</html>

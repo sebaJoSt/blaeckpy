@@ -8,7 +8,7 @@ import time
 from collections.abc import Callable, Sequence
 from importlib.metadata import version as _version
 
-from . import _clock, _commands, _properties, _transport
+from . import _clock, _commands, _console, _properties, _status, _transport
 from ._clock import TimestampMode
 from ._events import Button, Event
 from ._properties import (Category, Mode, NumberInput, Presentation, Select, Sensor, StateClass, Switch,
@@ -28,6 +28,10 @@ _ACK_UNKNOWN = 1
 _ACK_TRUNCATED = 7
 
 log = logging.getLogger("blaeckpy")
+_console.install(log)
+
+# begin()'s status_port when the script doesn't say; the tests set None.
+_DEFAULT = object()
 
 _Value = bool | int | float | str
 _TypeOrValue = type | bool | int | float | str
@@ -280,6 +284,9 @@ class Blaeck(_DeviceBase):
         self._last_interval_ms = 0
 
         self._began = False
+        self._status: _status.StatusPage | None = None
+        # The last command received, as (name, time.time()), for the status page.
+        self._last_command: tuple[str, float] | None = None
         self._answering = False
         self._requested = False
         self._restart_reported = False
@@ -468,26 +475,52 @@ class Blaeck(_DeviceBase):
 
     # ----- transport and loop -----
 
-    def begin(self, transport: object, *, max_clients: int | None = None) -> None:
+    def begin(self, transport: object, *, max_clients: int | None = None,
+              status_port: int | None = _DEFAULT) -> None:  # type: ignore[assignment]
         """Starts using a serial port or a listening TCP socket the script opened. Again after
         close(), with a port the script opened anew - once a serial port is lost, say.
 
         On TCP, up to ``max_clients`` connections (4 by default): the newest to send a BLAECK.
         command is the host, the others are terminals.
+
+        A status page shows the device in a browser, on ``status_port`` (8080 by default, or a
+        free one if that is taken; None for none). On TCP it listens where the device does; on
+        serial, on every interface.
         """
         if self._began:
             raise RuntimeError("begin() was called already; close() first to begin anew")
         if max_clients is not None and not hasattr(transport, "accept"):
             raise TypeError("max_clients is for a TCP server, not a serial port")
+        if status_port is _DEFAULT:
+            status_port = _status.DEFAULT_PORT
+        if status_port is not None and (isinstance(status_port, bool) or not isinstance(status_port, int)
+                                        or not 0 <= status_port <= 65535):
+            raise ValueError("status_port is 0 to 65535, or None for no status page")
         self._transport = _transport.transport_for(
             transport, 4 if max_clients is None else max_clients,
-            lambda slot, address: self._call("connect", slot, address),
+            self._connected,
             lambda slot, address, reason: self._disconnected(slot, address, reason))
         self._began = True
+        self._last_command = None
+        where = _status.describe(self._transport)
+        where = "listening on " + where if where.startswith("TCP") else "on " + where[0].lower() + where[1:]
+        banner = f"blaeckpy v{LIBRARY_VERSION}: {self.name!r} {where}"
+        log.info("%s", banner, extra=_console.styled(_console.BOLD + banner))
+        if status_port is not None:
+            try:
+                self._status = _status.StatusPage(self, status_port)
+            except OSError as e:
+                log.warning("No status page: %s", e)
+            else:
+                log.info("Status page: %s", self._status.url,
+                         extra=_console.styled(f"Status page: {_console.LINK}{self._status.url}"))
+
+    def _connected(self, slot: int, address) -> None:
+        log.info("Client %d connected: %s", slot, _status._address(address))
+        self._call("connect", slot, address)
 
     def _disconnected(self, slot: int, address, reason: str | None) -> None:
-        if reason:
-            log.info("client %d disconnected: %s", slot, reason)
+        log.info("Client %d disconnected%s", slot, f": {reason}" if reason else "")
         self._call("disconnect", slot, address)
 
     def close(self) -> None:
@@ -501,6 +534,9 @@ class Blaeck(_DeviceBase):
             self._transport.close()
         self._transport = None
         self._began = False
+        if self._status is not None:
+            self._status.close()
+            self._status = None
         # As a DATA_STOP and ENTITIES_STOP would, callbacks included, so a script following
         # them is not left thinking data still runs.
         if self._timed:
@@ -549,12 +585,14 @@ class Blaeck(_DeviceBase):
             self._pass += 1
             self._read()
             self._write_if_due(timestamp)
+            self._refresh_status()
             return
         deadline = time.monotonic() + timeout
         while True:
             self._pass += 1
             self._read()
             self._write_if_due(None)
+            self._refresh_status()
             now = time.monotonic()
             if now >= deadline:
                 return
@@ -570,6 +608,10 @@ class Blaeck(_DeviceBase):
             else:
                 # Nothing to wait on (no transport, or a serial port on Windows): poll in steps.
                 time.sleep(min(wait, 0.01))
+
+    def _refresh_status(self) -> None:
+        if self._status is not None:
+            self._status.refresh(self)
 
     def _transport_pending(self) -> bool:
         """A complete command already taken in, which select() would not wake for."""
@@ -631,6 +673,7 @@ class Blaeck(_DeviceBase):
         received = self._transport.receive()
         if received is not None:
             cmd = _commands.parse(*received)
+            self._last_command = (cmd.name, time.time())
             # Before the truncation check, so even a cut-off built-in makes its sender the host.
             if cmd.name.startswith("BLAECK."):
                 self._transport.builtin_received()

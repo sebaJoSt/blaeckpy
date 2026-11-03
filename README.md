@@ -128,6 +128,32 @@ A few things are Python's own:
   255-byte text, the most Home Assistant holds, even with every byte percent-encoded. The device
   list tells a host the limit.
 
+## Status page and terminal output
+
+`begin()` prints what the device is doing on the terminal, with colour where the terminal shows
+it (`NO_COLOR` turns it off):
+
+```
+blaeckpy v1.0.0: 'Bench' listening on TCP 0.0.0.0:2323
+Status page: http://127.0.0.1:8080
+Client 0 connected: 192.168.1.20:51234
+```
+
+These lines go through the `blaeckpy` logger. Once a script configures logging itself, with
+`logging.basicConfig()` say, they go to its handlers instead.
+
+The status page shows the device in a browser: its connection, the clients connected, and each
+device's signals and entities with their current values, refreshed every second. It needs no
+internet. It runs on port 8080, or on a free port if 8080 is taken, and the terminal says
+which. On TCP it listens on the same address as the device; on serial, on every interface, so
+the page of a headless computer such as a Raspberry Pi can be opened from another. The page only
+shows; it changes nothing on the device.
+
+```python
+device.begin(server, status_port=8081)   # another port
+device.begin(server, status_port=None)   # no status page
+```
+
 ## Examples
 
 The examples are in [`examples/`](examples). Each one is a single file that listens on TCP port
@@ -159,4 +185,5 @@ pytest
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). The status page uses [Pico CSS](https://picocss.com), MIT, see
+[pico-LICENSE.md](src/blaeckpy/static/pico-LICENSE.md).

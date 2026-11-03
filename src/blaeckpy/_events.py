@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Callable, Sequence
 
 from .protocol import frames
@@ -24,6 +25,8 @@ class Event:
         self.types = types
         self._presentation = presentation
         self._removed = False
+        # The type written last and when (time.time()), for the status page.
+        self._last: tuple[str, float] | None = None
 
     def add_type(self, type_: str) -> None:
         """One more type, at the end of the list. Hosts learn of it from the entity list."""
@@ -39,6 +42,7 @@ class Event:
             raise RuntimeError(f"event {self.name!r} was removed by clear_all_events()")
         if type_ not in self.types:
             raise ValueError(f"{self.name!r} has no event type {type_!r}")
+        self._last = (type_, time.time())
         self._device._write_event(self, self.types.index(type_))
 
     def _entry(self) -> frames.Entry:
