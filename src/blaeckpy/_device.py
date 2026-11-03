@@ -341,7 +341,11 @@ class Blaeck(_DeviceBase):
     def clear_all_signals(self) -> None:
         """Removes every signal, the sub-devices' too, so a new set can be added. A host learns
         of the new signals from the next device list it asks for; one that is logging stops at
-        the next data frame, whose schema hash no longer matches its columns."""
+        the next data frame, whose schema hash no longer matches its columns.
+
+        A sensor that shows a signal keeps showing that Signal object, as a blaeck sensor keeps
+        reading its variable; one added anew under the same name is another object. To show
+        the new one, clear_all_sensors() and add the sensor again."""
         for sig in self._signals:
             sig._removed = True
         self._signals.clear()
