@@ -100,7 +100,7 @@ declare on a sub-device.
 | `addNumberInput`, `addTextInput`, `addSwitch`, `addSelect` | `add_number_input(name, 20.0, min=, max=, step=)`, `add_text_input`, `add_switch`, `add_select(name, 0, options=[...])` | Controls Home Assistant lets the user operate; `.value`, `@input.on_change` |
 | `addSensor` | `add_sensor(name, signal)`, `add_sensor(name, 21.5)`, `add_sensor(name, float, get=fn)`, `add_sensor(name, 0, options=[...])` | Values Home Assistant shows but the user can't set |
 | `addEvent`, `writeEvent` | `add_event(name, [types])`, `event.write(type)` | Occurrences, such as a doorbell |
-| `addButton` | `add_button(name, fn)` | A press with no value |
+| `addButton` | `add_button(name, fn)`, `@device.add_button(name)` | A press with no value |
 | `onCommand`, `onAnyCommand` | `@device.on_command(name)`, `@device.on_any_command` | Commands no host lists; parameters arrive as text |
 | `addDevice`, `markMissing`, `markPresent`, `writeRestarted` | `add_device(name)`, `mark_missing()`, `mark_present()`, `write_restarted()` | A second board shown as its own device |
 | `withUnit`, `withIcon`, `withDeviceClass`, `config()`, ... | `unit=`, `icon=`, `device_class=`, `category=Category.CONFIG`, ... | How a host shows it |

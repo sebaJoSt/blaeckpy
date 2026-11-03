@@ -184,6 +184,19 @@ def test_a_button_ignores_parameters():
     assert presses == [1]
 
 
+def test_add_button_works_as_a_decorator_and_leaves_the_function():
+    device, port, presses = Blaeck(), Port(), []
+
+    @device.add_button("Reboot", icon="mdi:restart")
+    def reboot():
+        presses.append(1)
+
+    reboot()
+    device.begin(port)
+    assert ack_reason(device, port, "<Reboot>") == 0
+    assert presses == [1, 1]
+
+
 def test_an_event_writes_only_its_own_types():
     event = Blaeck().add_event("Alarms", ["Overheat"])
     with pytest.raises(ValueError):

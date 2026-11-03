@@ -129,17 +129,28 @@ class _DeviceBase:
         self._core._catalog_changed()
         return event
 
-    def add_button(self, name: str, press: Callable[[], None], *, display_name=None, icon=None,
-                   device_class=None, category="none", disabled_by_default=False) -> Button:
-        """A button a host presses; ``press`` runs with no arguments, parameters are ignored."""
+    def add_button(self, name: str, press: Callable[[], None] | None = None, *, display_name=None,
+                   icon=None, device_class=None, category="none", disabled_by_default=False):
+        """A button a host presses; ``press`` runs with no arguments, parameters are ignored.
+        Returns the :class:`Button`. Works as ``@device.add_button("Reset")`` too, which leaves
+        the function as it is."""
         name = self._core._host_name(name, "button")
         presentation = Presentation(number=False, display_name=display_name, icon=icon,
                                     device_class=device_class, category=category,
                                     disabled_by_default=disabled_by_default)
-        button = Button(self._id, name, press, presentation)
-        self._core._buttons.append(button)
-        self._core._catalog_changed()
-        return button
+
+        def register(fn: Callable[[], None]) -> Button:
+            button = Button(self._id, name, fn, presentation)
+            self._core._buttons.append(button)
+            self._core._catalog_changed()
+            return button
+
+        if press is None:
+            def decorate(fn: Callable[[], None]) -> Callable[[], None]:
+                register(fn)
+                return fn
+            return decorate
+        return register(press)
 
     def on_command(self, name: str, handler: Callable | None = None):
         """A command a host sends by name and no host lists: ``handler(*params)`` runs with its
