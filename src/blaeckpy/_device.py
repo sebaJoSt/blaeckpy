@@ -217,7 +217,7 @@ class Terminal:
     def write(self, text: str) -> None:
         t = self._device._transport
         if t is not None:
-            t.terminal(text.encode("utf-8"))
+            t.terminal(text.encode("utf-8", "surrogateescape"))
 
     def print(self, *values: object, sep: str = " ", end: str = "\n") -> None:
         self.write(sep.join(str(v) for v in values) + end)

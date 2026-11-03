@@ -90,7 +90,7 @@ def checked(type_: type, value: object, what: str = "value") -> Any:
         return float(value)
     if not isinstance(value, str):
         raise TypeError(f"a str {what} is text, not {value!r}")
-    if len(value.encode("utf-8")) > TEXT_MAX:
+    if len(value.encode("utf-8", "surrogateescape")) > TEXT_MAX:
         raise ValueError(f"a text holds at most {TEXT_MAX} bytes")
     return value
 

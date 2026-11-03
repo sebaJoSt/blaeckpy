@@ -5,6 +5,7 @@ import logging
 import pytest
 
 from blaeckpy import Blaeck, Category, Mode
+from blaeckpy.protocol import _decode
 
 
 class Port:
@@ -313,3 +314,26 @@ def test_a_255_byte_text_fits_a_command_even_fully_percent_encoded():
     assert advertised.command_payload_max == 1023
     assert ack_reason(device, port, "<Long," + "x" * 1018 + ">") == 0  # 1023 characters
     assert ack_reason(device, port, "<Long," + "x" * 1019 + ">") == 7
+
+
+def test_a_text_that_is_not_utf8_goes_back_out_as_the_same_bytes():
+    # blaeck stores what it decoded and sends it back, without looking at the encoding.
+    device, port = Blaeck(), Port()
+    note = device.add_text_input("Note")
+    copy = device.add_signal("Copy", str)
+    device.begin(port)
+    device.tick()
+
+    assert ack_reason(device, port, "<Note,%FF>") == 0
+    assert note.value == "\udcff"
+    assert b"\xff" in bytes(port.outgoing)
+
+    # It stays a value like any other: in the entity list, a signal, and the terminal.
+    copy.value = note.value
+    device.terminal.print(note.value)
+    port.outgoing.clear()
+    port.incoming += b"<BLAECK.WRITE_ENTITIES><BLAECK.WRITE_DATA>"
+    device.tick()
+    frames = _decode.Decoder().feed(bytes(port.outgoing))
+    frames = [f for f in frames if isinstance(f, _decode.Frame)]
+    assert [f.body.properties[0].value for f in frames if f.key == 0x90] == ["\udcff"]

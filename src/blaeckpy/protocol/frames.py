@@ -141,8 +141,9 @@ def check_listed(items: Sequence[str], what: str) -> None:
 
 
 def text_value(text: str) -> bytes:
-    """A DTYPE 10 value: a 1-byte length, then that many UTF-8 bytes."""
-    data = text.encode("utf-8")
+    """A DTYPE 10 value: a 1-byte length, then that many UTF-8 bytes. Bytes that came in as
+    something else go back out unchanged, as blaeck sends them."""
+    data = text.encode("utf-8", "surrogateescape")
     if len(data) > TEXT_MAX:
         raise ValueError(f"text is {len(data)} bytes; at most {TEXT_MAX} fit")
     return u8(len(data)) + data
