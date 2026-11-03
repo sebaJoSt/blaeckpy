@@ -103,14 +103,21 @@ class _DeviceBase:
         return self._core._add_property(TextInput(self._core, self._id, name, initial, max_length=max_length, mode=mode,
                                             presentation=presentation, min_interval_ms=min_interval_ms))
 
-    def add_sensor(self, name: str, source, initial=None, *, get=None, options=None,
-                   write_on_change: float = 0.0, min_interval_ms: int = 100,
-                   **presentation) -> Sensor:
+    def add_sensor(self, name: str, source, initial=None, *, get=None, options=None, unit=None,
+                   display_name=None, icon=None, device_class=None, state_class=None,
+                   display_precision=None, category="none", disabled_by_default=False,
+                   force_update=False, write_on_change: float = 0.0,
+                   min_interval_ms: int = 100) -> Sensor:
         """A value a host shows: ``add_sensor("T", signal)`` shows a signal's value,
         ``add_sensor("T", float, 21.5)`` or ``add_sensor("T", 21.5)`` holds its own,
         ``add_sensor("T", float, get=fn)`` reads a function, and
-        ``add_sensor("Phase", 0, options=[...])`` holds the index of an option."""
+        ``add_sensor("Phase", 0, options=[...])`` holds the index of an option.
+        ``unit``, ``state_class`` and ``display_precision`` are for numbers."""
         name = self._core._host_name(name, "sensor")
+        presentation = dict(unit=unit, display_name=display_name, icon=icon, device_class=device_class,
+                            state_class=state_class, display_precision=display_precision,
+                            category=category, disabled_by_default=disabled_by_default,
+                            force_update=force_update)
         return self._core._add_property(Sensor(self._core, self._id, name, source, initial, get=get, options=options,
                                          presentation=presentation, write_on_change=write_on_change,
                                          min_interval_ms=min_interval_ms))
