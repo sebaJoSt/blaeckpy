@@ -196,10 +196,10 @@ class Signal:
 
     def write(self, value=None, timestamp: int | None = None) -> None:
         """Sends the signal now, set to ``value`` if one is given."""
-        if value is not None:
-            self.value = value
         if self._removed:
             raise RuntimeError(f"signal {self.name!r} was removed by clear_all_signals()")
+        if value is not None:
+            self.value = value
         self._device._write_signal_now(self, timestamp)
 
     def __repr__(self) -> str:

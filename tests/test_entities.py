@@ -203,6 +203,8 @@ def test_clearing_lets_a_new_set_be_declared_and_old_handles_say_so():
     device.clear_all_commands()
     with pytest.raises(RuntimeError):
         old_signal.write(1.0)
+    # Refused before anything changes: the old value stays.
+    assert old_signal.value != 1.0
     with pytest.raises(RuntimeError):
         old_event.write("a")
     # The names are free again; the sensor stays, as sensors go with clear_all_sensors().
