@@ -104,6 +104,18 @@ def test_a_signal_brings_its_unit():
         Blaeck().add_signal("T", float, unit="°\nC")
 
 
+@pytest.mark.parametrize("delta", [-1, float("nan"), float("inf")])
+def test_a_change_threshold_is_0_or_above_and_finite(delta):
+    with pytest.raises(ValueError):
+        Blaeck().add_signal("T", int, write_on_change=delta)
+    with pytest.raises(ValueError):
+        OnChange(delta)
+    with pytest.raises(ValueError):
+        Blaeck().add_number_input("N", 0.0, write_on_change=delta)
+    with pytest.raises(ValueError):
+        Blaeck().add_sensor("S", 0.0, write_on_change=delta)
+
+
 @pytest.mark.parametrize(
     "raw, params",
     [(b"Label, Hallway %20", ["Hallway"]), (b"Label,%09a b%0D%0A", ["a b"]), (b"X, ,y", ["", "y"]),

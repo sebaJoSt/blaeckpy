@@ -32,11 +32,24 @@ ALWAYS = _Mode("ALWAYS")
 OFF = _Mode("OFF")
 
 
+def check_delta(delta: object, what: str = "a change threshold") -> float:
+    """A change threshold: a number, 0 or above and finite, as blaeck takes one."""
+    if isinstance(delta, bool) or not isinstance(delta, (int, float)):
+        raise TypeError(f"{what} is a number, not {delta!r}")
+    delta = float(delta)
+    if not delta >= 0 or math.isinf(delta):
+        raise ValueError(f"{what} is 0 or above and finite, not {delta!r}")
+    return delta
+
+
 @dataclass(frozen=True)
 class OnChange:
     """In an interval report only if the value moved by at least ``delta`` since last sent."""
 
     delta: float = ANY_CHANGE
+
+    def __post_init__(self) -> None:
+        check_delta(self.delta, "OnChange(delta)")
 
 
 def type_and_value(type_or_initial: object, initial: object) -> tuple[type, object]:
@@ -165,7 +178,7 @@ class Signal:
         if write_on_change is not None:
             r = self._ensure_reporting()
             r.immediate = True
-            r.change_delta = float(write_on_change)
+            r.change_delta = check_delta(write_on_change, "write_on_change")
             r.min_interval_ms = int(min_interval_ms)
 
     def _ensure_reporting(self) -> _Reporting:

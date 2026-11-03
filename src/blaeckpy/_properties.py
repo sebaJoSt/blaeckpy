@@ -7,7 +7,7 @@ import re
 from collections.abc import Callable, Sequence
 from enum import StrEnum
 
-from ._signal import ANY_CHANGE, Signal, _Reporting, changed, check_unit, checked, type_and_value
+from ._signal import ANY_CHANGE, Signal, _Reporting, changed, check_delta, check_unit, checked, type_and_value
 from .protocol import frames
 from .protocol.frames import DType, ValueKind
 
@@ -146,7 +146,7 @@ class Property:
         self.dtype = dtype
         self._presentation = presentation
         self._reporting = _Reporting()
-        self._reporting.change_delta = float(write_on_change)
+        self._reporting.change_delta = check_delta(write_on_change, "write_on_change")
         self._reporting.min_interval_ms = int(min_interval_ms)
         self._on_change: Callable[[], None] | None = None
 
