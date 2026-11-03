@@ -428,13 +428,14 @@ class Blaeck(_DeviceBase):
     # ----- transport and loop -----
 
     def begin(self, transport, *, max_clients: int | None = None) -> None:
-        """Starts using a serial port or a listening TCP socket the script opened. Once only.
+        """Starts using a serial port or a listening TCP socket the script opened. Again after
+        close(), with a port the script opened anew - once a serial port is lost, say.
 
         On TCP, up to ``max_clients`` connections (4 by default): the newest to send a BLAECK.
         command is the host, the others are terminals.
         """
         if self._began:
-            raise RuntimeError("begin() was called already")
+            raise RuntimeError("begin() was called already; close() first to begin anew")
         if max_clients is not None and not hasattr(transport, "accept"):
             raise TypeError("max_clients is for a TCP server, not a serial port")
         self._transport = _transport.transport_for(
@@ -450,10 +451,26 @@ class Blaeck(_DeviceBase):
 
     def close(self) -> None:
         """Stops using the transport. A serial port or listening socket stays open, for the
-        script to close; the connections blaeckpy accepted are closed."""
+        script to close; the connections blaeckpy accepted are closed.
+
+        begin() may follow. The host on the new link has asked for nothing yet, so the device
+        is silent again until it does, as at the start; it did not restart, so no host is told
+        that it did."""
         if self._transport is not None:
             self._transport.close()
         self._transport = None
+        self._began = False
+        # As a DATA_STOP and ENTITIES_STOP would, callbacks included, so a script following
+        # them is not left thinking data still runs.
+        if self._timed:
+            self._set_timed(False, self._interval_ms)
+            self._call("interval_stop")
+        if not self._data_stopped:
+            self._call("data_stop")
+            self._data_stopped = True
+        if not self._entities_stopped:
+            self._call("entities_stop")
+            self._entities_stopped = True
 
     def on_connect(self, fn):
         """``fn(client_no, address)`` when a TCP connection opens: its slot, from 0, and the

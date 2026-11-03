@@ -61,6 +61,19 @@ device.begin(port)
 Everything else stays the same. Connect the host to the other end of the serial link at
 115200 baud.
 
+If the port goes away, a USB cable pulled say, `tick()` raises the port's error. Close the
+device, reopen the port and begin again; the device is silent until the host asks again:
+
+```python
+try:
+    device.tick(timeout=0.1)
+except serial.SerialException:
+    device.close()
+    port.close()
+    port = serial.Serial("/dev/ttyUSB0", 115200)   # once it is back
+    device.begin(port)
+```
+
 Three calls do the work:
 
 - `add_signal(...)` declares a value to log. Set its `.value`; blaeckpy reads it whenever it

@@ -143,6 +143,24 @@ def test_a_raising_get_is_logged_once_and_its_last_value_stands_in(caplog):
         sensor.value
 
 
+def test_close_lets_begin_follow_and_stops_what_the_host_started():
+    device, stopped = Blaeck(), []
+    device.add_signal("T", 1.0)
+    device.on_data_stop(lambda: stopped.append("data"))
+    device.on_entities_stop(lambda: stopped.append("entities"))
+    port = Port()
+    device.begin(port)
+    ack_reason(device, port, "<BLAECK.DATA_START>")
+    ack_reason(device, port, "<BLAECK.ENTITIES_START>")
+    device.close()
+    assert stopped == ["data", "entities"]
+    reopened = Port()
+    device.begin(reopened)
+    assert ack_reason(device, reopened, "<BLAECK.GET_DEVICES>") == 0
+    with pytest.raises(RuntimeError):
+        device.begin(Port())
+
+
 def test_the_catch_all_takes_a_command_only_by_returning_true():
     device, port = Blaeck(), Port()
     seen = []
