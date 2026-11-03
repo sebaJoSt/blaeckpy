@@ -136,15 +136,63 @@ def test_no_status_page_with_none_and_a_bad_port_is_refused(server):
             Blaeck("Bench").begin(server, status_port=bad)
 
 
-def test_a_serial_device_listens_everywhere_and_get_is_not_read_for_the_page():
+def test_a_serial_device_listens_everywhere():
     device = Blaeck("Bench")
-    calls = []
-    device.add_sensor("Load", float, get=lambda: calls.append(1) or 0.5)
     device.begin(SerialPort(), status_port=None)
     assert _status.bind_address(device._transport) == ("0.0.0.0", socket.AF_INET)
     data = _status.snapshot(device)
     assert data["connection"] == "Serial COM7 at 115200 baud" and data["clients"] is None
-    assert calls == []
+    device.close()
+
+
+def load_value(data) -> str:
+    return data["devices"][0]["entities"][0]["value"]
+
+
+def test_a_get_is_read_for_the_page_only_while_it_is_open(server, monkeypatch):
+    monkeypatch.setattr(_status, "REFRESH", 0)
+    device, calls = Blaeck("Bench"), []
+    device.add_sensor("Load", float, get=lambda: calls.append(1) or 42.0)
+    device.begin(server, status_port=0)
+    try:
+        # Nobody looks and no host listens: the function isn't called.
+        for _ in range(5):
+            device.tick()
+        assert calls == []
+        assert load_value(api(device)) == "0.0"
+
+        # The page asked, so the next snapshot reads it.
+        device.tick()
+        assert calls and load_value(api(device)) == "42.0"
+
+        # Nobody has asked for a while: it stops again.
+        monkeypatch.setattr(_status, "VIEWING", 0)
+        calls.clear()
+        for _ in range(5):
+            device.tick()
+        assert calls == []
+    finally:
+        device.close()
+
+
+def test_a_get_is_read_once_in_a_pass_and_a_raising_one_is_logged_once(caplog):
+    device, readings = Blaeck("Bench"), [1.5]
+
+    def load():
+        return readings.append(readings[-1]) or readings[-1] if readings[-1] else 1 / 0
+
+    device.add_sensor("Load", float, get=load)
+    device.begin(SerialPort(), status_port=None)
+    first = _status.snapshot(device, viewing=True)
+    second = _status.snapshot(device, viewing=True)
+    assert load_value(first) == load_value(second) == "1.5" and len(readings) == 2
+
+    readings.append(0)
+    with caplog.at_level(logging.ERROR, logger="blaeckpy"):
+        for _ in range(3):
+            device.tick()
+            assert load_value(_status.snapshot(device, viewing=True)) == "1.5"
+    assert len([r for r in caplog.records if "Load" in r.getMessage()]) == 1
     device.close()
 
 

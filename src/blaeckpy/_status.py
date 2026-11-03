@@ -3,6 +3,7 @@ refreshed every second. On by default, at http://<computer>:8080.
 
 The HTTP server runs on a thread of its own, but never touches the device: tick() builds a
 snapshot about once a second, on the script's thread, and the server only hands out the latest.
+A sensor's get= is read for it only while the page is open, so nobody looking costs nothing.
 """
 
 from __future__ import annotations
@@ -25,6 +26,8 @@ log = logging.getLogger("blaeckpy")
 DEFAULT_PORT = 8080
 # How often tick() refreshes what the page shows, in seconds.
 REFRESH = 0.5
+# How long after the page last asked it still counts as open, in seconds. It asks every second.
+VIEWING = 3.0
 
 _KINDS = {"NumberInput": "Number", "TextInput": "Text"}
 
@@ -35,7 +38,7 @@ def _text(value) -> str:
     return str(value)
 
 
-def _entity(prop) -> dict:
+def _entity(prop, viewing: bool) -> dict:
     kind = type(prop).__name__
     entry = {"name": prop.name, "kind": _KINDS.get(kind, kind), "unit": None, "value": "",
              "types": [], "at": None}
@@ -50,8 +53,10 @@ def _entity(prop) -> dict:
     options = getattr(prop, "options", None)
     if getattr(prop, "_signal", None) is not None:
         value = prop._signal.value
+    elif viewing and getattr(prop, "_get", None) is not None:
+        # Read as tick() reads it: once in a pass, and one that raises is logged, not raised.
+        value = prop._current()
     else:
-        # Never prop.value: a get= sensor would call the script's function from here.
         value = prop._value
     if options is not None and isinstance(value, int) and 0 <= value < len(options):
         value = options[value]
@@ -59,8 +64,9 @@ def _entity(prop) -> dict:
     return entry
 
 
-def snapshot(device) -> dict:
-    """What the page shows, taken on the script's thread."""
+def snapshot(device, viewing: bool = False) -> dict:
+    """What the page shows, taken on the script's thread. ``viewing`` reads the get= sensors, with
+    the page open; otherwise they show the value they last gave."""
     boards = [device, *device._devices]
     devices = []
     for d in boards:
@@ -72,7 +78,7 @@ def snapshot(device) -> dict:
             "missing": bool(getattr(d, "_missing", False)),
             "signals": [{"name": s.name, "type": s.type.__name__, "unit": s.unit, "value": _text(s.value)}
                         for s in device._signals if s.device_id == d._id],
-            "entities": [_entity(e) for e in entities],
+            "entities": [_entity(e, viewing) for e in entities],
         })
     if device._data_stopped:
         data = "Stopped"
@@ -196,6 +202,8 @@ def _handler(status: "StatusPage"):
             if path == "/":
                 self._reply(200, "text/html; charset=utf-8", status.page)
             elif path == "/api":
+                # One assignment, read on the script's thread.
+                status.asked = time.monotonic()
                 data = dict(status.data)
                 now = time.time()
                 data["now"] = now
@@ -254,6 +262,7 @@ class StatusPage:
         self.data = snapshot(device)
         self.started = time.monotonic()
         self._taken = self.started
+        self.asked: float | None = None
 
         server_class = type("_Server", (_Server,), {"address_family": family})
         try:
@@ -274,7 +283,7 @@ class StatusPage:
         if force or now - self._taken >= REFRESH:
             self._taken = now
             # One assignment: the server thread sees the old snapshot or the new, never a mix.
-            self.data = snapshot(device)
+            self.data = snapshot(device, self.asked is not None and now - self.asked < VIEWING)
 
     def close(self) -> None:
         self._server.shutdown()

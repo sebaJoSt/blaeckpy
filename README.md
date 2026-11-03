@@ -143,7 +143,8 @@ device's signals and entities with their current values, refreshed every second.
 internet. It runs on port 8080, or on a free port if 8080 is taken, and the terminal says
 which. On TCP it listens on the same address as the device; on serial, on every interface, so
 the page of a headless computer such as a Raspberry Pi can be opened from another. The page only
-shows; it changes nothing on the device.
+shows; it changes nothing on the device. A sensor's `get=` is read for the page only while the
+page is open.
 
 ```python
 device.begin(server, status_port=8081)   # another port
