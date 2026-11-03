@@ -208,3 +208,17 @@ def test_the_host_gets_no_answer_to_a_terminals_command(server):
     pump(device, [host, terminal])
     assert ran == [("2",)]
     assert host.frames() == [] and terminal.frames() == []
+
+
+def test_close_closes_the_connections_without_on_disconnect(server):
+    device, events = Blaeck(), []
+    device.on_connect(lambda client_no, address: events.append("connect"))
+    device.on_disconnect(lambda client_no, address: events.append("disconnect"))
+    device.begin(server)
+    client = socket.create_connection(server.getsockname(), timeout=2)
+    while not events:
+        device.tick(0.01)
+    device.close()
+    assert events == ["connect"]
+    assert client.recv(1) == b""  # The device's end closed.
+    client.close()

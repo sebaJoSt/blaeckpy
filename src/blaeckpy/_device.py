@@ -511,8 +511,8 @@ class Blaeck(_DeviceBase):
 
     def begin(self, transport: object, *, max_clients: int | None = None,
               status_port: int | None = _DEFAULT) -> None:  # type: ignore[assignment]
-        """Starts using a serial port or a listening TCP socket the script opened. Again after
-        close(), with a port the script opened anew - once a serial port is lost, say.
+        """Starts using a serial port or a listening TCP socket the script opened. Once only, also
+        after close(), as in blaeck.
 
         On TCP, up to ``max_clients`` connections (4 by default): the newest to send a BLAECK.
         command is the host, the others are terminals.
@@ -522,7 +522,7 @@ class Blaeck(_DeviceBase):
         serial, on every interface.
         """
         if self._began:
-            raise RuntimeError("begin() was called already; close() first to begin anew")
+            raise RuntimeError("begin() was called already; a device begins once")
         if self._without_function:
             raise ValueError(f"{self._without_function[0]} has no function: pass one, or use it "
                              "as a decorator")
@@ -583,30 +583,16 @@ class Blaeck(_DeviceBase):
 
     def close(self) -> None:
         """Stops using the transport. A serial port or listening socket stays open, for the
-        script to close; the connections blaeckpy accepted are closed.
-
-        begin() may follow. The host on the new link has asked for nothing yet, so the device
-        is silent again until it does, as at the start; it did not restart, so no host is told
-        that it did."""
+        script to close; the connections blaeckpy accepted are closed. This is the end of the
+        device, as blaeck's end() is: no callback runs for it, and no begin() may follow. Safe to
+        call again."""
         if self._transport is not None:
             self._transport.close()
         self._transport = None
         self._connection = "Closed"
-        self._began = False
         if self._status is not None:
             self._status.close()
             self._status = None
-        # As a DATA_STOP and ENTITIES_STOP would, callbacks included, so a script following
-        # them is not left thinking data still runs.
-        if self._timed:
-            self._set_timed(False, self._interval_ms)
-            self._call("interval_stop")
-        if not self._data_stopped:
-            self._call("data_stop")
-            self._data_stopped = True
-        if not self._entities_stopped:
-            self._call("entities_stop")
-            self._entities_stopped = True
 
     def on_connect[F: Callable](self, fn: F) -> F:
         """``fn(client_no, address)`` when a TCP connection opens: its slot, from 0, and the
@@ -614,7 +600,8 @@ class Blaeck(_DeviceBase):
         return self._register("connect", fn)
 
     def on_disconnect[F: Callable](self, fn: F) -> F:
-        """``fn(client_no, address)`` when a TCP connection closes or is replaced as host."""
+        """``fn(client_no, address)`` when a TCP connection closes or is replaced as host; not
+        for those close() ends."""
         return self._register("disconnect", fn)
 
     def __enter__(self):

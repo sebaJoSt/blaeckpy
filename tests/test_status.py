@@ -116,7 +116,7 @@ def test_a_port_in_use_moves_the_page_to_a_free_one(server, caplog):
         taken.close()
 
 
-def test_close_stops_the_page_and_begin_starts_it_again(server):
+def test_close_stops_the_page(server):
     device = Blaeck("Bench")
     device.begin(server, status_port=0)
     url = device._status.url
@@ -124,11 +124,6 @@ def test_close_stops_the_page_and_begin_starts_it_again(server):
     assert device._status is None
     with pytest.raises(urllib.error.URLError):
         get(url + "/api")
-    device.begin(server, status_port=0)
-    try:
-        assert api(device)["device"]["name"] == "Bench"
-    finally:
-        device.close()
 
 
 def test_no_status_page_with_none_and_a_bad_port_is_refused(server):
@@ -138,7 +133,7 @@ def test_no_status_page_with_none_and_a_bad_port_is_refused(server):
     device.close()
     for bad in (-1, 65536, True, "8080"):
         with pytest.raises(ValueError):
-            device.begin(server, status_port=bad)
+            Blaeck("Bench").begin(server, status_port=bad)
 
 
 def test_a_serial_device_listens_everywhere_and_get_is_not_read_for_the_page():

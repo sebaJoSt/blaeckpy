@@ -166,22 +166,24 @@ def test_a_get_is_read_once_a_pass_and_not_while_nothing_can_go_out():
     assert len([f for f in sent if f.key == 0x95]) == 5
 
 
-def test_close_lets_begin_follow_and_stops_what_the_host_started():
-    device, stopped = Blaeck(), []
+def test_close_ends_the_device_as_end_does_in_blaeck():
+    device, port, called = Blaeck(), Port(), []
     device.add_signal("T", 1.0)
-    device.on_data_stop(lambda: stopped.append("data"))
-    device.on_entities_stop(lambda: stopped.append("entities"))
-    port = Port()
+    device.on_data_stop(lambda: called.append("data"))
+    device.on_entities_stop(lambda: called.append("entities"))
+    device.on_interval_stop(lambda: called.append("interval"))
     device.begin(port)
     ack_reason(device, port, "<BLAECK.DATA_START>")
     ack_reason(device, port, "<BLAECK.ENTITIES_START>")
+    ack_reason(device, port, "<BLAECK.INTERVAL_START,100>")
     device.close()
-    assert stopped == ["data", "entities"]
-    reopened = Port()
-    device.begin(reopened)
-    assert ack_reason(device, reopened, "<BLAECK.GET_DEVICES>") == 0
-    with pytest.raises(RuntimeError):
+    assert called == []
+    with pytest.raises(RuntimeError, match="begins once"):
         device.begin(Port())
+    port.outgoing.clear()
+    device.tick()
+    device.close()
+    assert port.outgoing == b""
 
 
 def test_the_catch_all_takes_a_command_only_by_returning_true():
