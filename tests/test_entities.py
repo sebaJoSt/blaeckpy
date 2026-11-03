@@ -143,6 +143,27 @@ def test_a_raising_get_is_logged_once_and_its_last_value_stands_in(caplog):
         sensor.value
 
 
+def test_a_get_is_read_once_a_pass_and_not_while_nothing_can_go_out():
+    device, port, calls = Blaeck(), Port(), []
+    device.add_sensor("T", float, get=lambda: calls.append(1) or float(len(calls)),
+                      min_interval_ms=0)
+    device.begin(port)
+    for _ in range(5):
+        device.tick()
+    # Only for the entity list announcing the restart; with entities stopped, not since.
+    assert len(calls) == 1
+    ack_reason(device, port, "<BLAECK.ENTITIES_START>")
+    calls.clear()
+    port.outgoing.clear()
+    for _ in range(5):
+        device.tick()
+    assert len(calls) == 5
+    # Each pass sent the value it compared: 1.0 to 5.0, none skipped or read twice.
+    from blaeckpy.protocol import envelope
+    sent = [envelope.open_frame(f + b"/>\n") for f in bytes(port.outgoing).split(b"/>\n")[:-1]]
+    assert len([f for f in sent if f.key == 0x95]) == 5
+
+
 def test_close_lets_begin_follow_and_stops_what_the_host_started():
     device, stopped = Blaeck(), []
     device.add_signal("T", 1.0)

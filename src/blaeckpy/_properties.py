@@ -401,6 +401,7 @@ class Sensor(Property):
         self._signal: Signal | None = None
         self._get: Callable[[], object] | None = None
         self._get_failing = False
+        self._read_pass: int | None = None
         self.options: list[str] | None = None
         value = None
         if options is not None:
@@ -436,12 +437,14 @@ class Sensor(Property):
         self._value = value
 
     def _current(self):
-        """The value as tick() sends it. A get= that raises or returns the wrong type is logged
+        """The value as tick() sends it. A get= is read once in each pass of tick(), so the
+        value compared is the value sent. One that raises or returns the wrong type is logged
         once, until it reads again, and the last value it gave goes out in its place: like any
         other function of the script's, it must not stop the device."""
         if self._signal is not None:
             return self._signal.value
-        if self._get is not None:
+        if self._get is not None and self._read_pass != self._device._pass:
+            self._read_pass = self._device._pass
             try:
                 self._value = self._read_get()
                 self._get_failing = False
@@ -450,8 +453,12 @@ class Sensor(Property):
                     self._get_failing = True
                     log.exception("get= of sensor %r raised inside tick(); its last value stands in",
                                   self.name)
-            return self._value
         return self._value
+
+    def write(self) -> None:
+        """Sends the value now, changed or not; a get= reads afresh for it."""
+        self._read_pass = None
+        super().write()
 
     def _read_get(self):
         return checked(self.type, self._get(), "value from get=")

@@ -264,6 +264,8 @@ class Blaeck(_DeviceBase):
         self._clock = _clock.Clock()
         self.terminal = Terminal(self)
         self._ticks_without_wait = 0
+        # Counts tick()'s passes; a get= sensor reads its function once in each.
+        self._pass = 0
         self._tick_second = 0
         self._hinted = False
         self._timestamp_mode = TimestampMode.NONE
@@ -547,11 +549,13 @@ class Blaeck(_DeviceBase):
             raise ValueError("timeout is 0 or more seconds")
         if not timeout:
             self._hint_busy_loop()
+            self._pass += 1
             self._read()
             self._write_if_due(timestamp)
             return
         deadline = time.monotonic() + timeout
         while True:
+            self._pass += 1
             self._read()
             self._write_if_due(None)
             now = time.monotonic()
@@ -787,6 +791,9 @@ class Blaeck(_DeviceBase):
         return True
 
     def _write_changed_properties(self) -> None:
+        # Nothing can go out, so no get= needs to read.
+        if not self._may_write_entities():
+            return
         now = self._clock.millis()
         for prop in self._properties:
             if self._is_missing(prop.device_id):
