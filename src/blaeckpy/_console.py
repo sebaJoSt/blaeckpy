@@ -89,8 +89,9 @@ class ConsoleHandler(logging.StreamHandler):
 
 
 def styled(codes: str) -> dict:
-    """``extra=`` for a log call whose message has bold text or a link: ``codes`` is the message
-    with ANSI codes, shown on a colour terminal; everywhere else gets the plain message."""
+    """``extra=`` for a log call that is not in its level's colour: ``codes`` is the message as a
+    colour terminal shows it, with ANSI codes for bold text or a link, or none for plain text.
+    Everywhere else gets the plain message."""
     return {"styled": codes}
 
 

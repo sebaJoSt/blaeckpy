@@ -151,10 +151,38 @@ def test_a_serial_device_listens_everywhere_and_get_is_not_read_for_the_page():
     device.close()
 
 
-@pytest.mark.parametrize("host, shown", [("0.0.0.0", "127.0.0.1"), ("::", "[::1]"),
-                                         ("192.168.1.5", "192.168.1.5"), ("fe80::1", "[fe80::1]")])
-def test_the_link_reaches_the_page_from_this_computer(host, shown):
-    assert _status.url_host(host) == shown
+@pytest.mark.parametrize("host, family, shown", [
+    ("0.0.0.0", socket.AF_INET, ["127.0.0.1", "192.168.1.20"]),
+    ("::", socket.AF_INET6, ["[::1]", "192.168.1.20"]),
+    ("192.168.1.5", socket.AF_INET, ["192.168.1.5"]),
+    ("fe80::1", socket.AF_INET6, ["[fe80::1]"])])
+def test_all_addresses_are_shown_as_this_computer_and_the_network(host, family, shown, monkeypatch):
+    monkeypatch.setattr(_status, "network_address", lambda family: "192.168.1.20")
+    assert _status.reachable_hosts(host, family) == shown
+
+
+def test_without_a_network_only_this_computer_is_shown(monkeypatch):
+    monkeypatch.setattr(_status, "network_address", lambda family: None)
+    assert _status.reachable_hosts("0.0.0.0", socket.AF_INET) == ["127.0.0.1"]
+
+
+def test_listening_on_all_addresses_lists_where_to_connect(monkeypatch, caplog):
+    monkeypatch.setattr(_status, "network_address", lambda family: "192.168.1.20")
+    server = socket.create_server(("", 0))
+    port = server.getsockname()[1]
+    device = Blaeck("Bench")
+    try:
+        with caplog.at_level(logging.INFO, logger="blaeckpy"):
+            device.begin(server, status_port=0)
+        lines = caplog.messages
+        assert lines[0].endswith("'Bench' listening on all addresses (0.0.0.0)")
+        assert lines[1:3] == [f"  TCP 127.0.0.1:{port}", f"  TCP 192.168.1.20:{port}"]
+        page = device._status.port
+        assert lines[3:6] == ["Status page:", f"  http://127.0.0.1:{page}", f"  http://192.168.1.20:{page}"]
+        assert api(device)["connection"] == f"TCP 0.0.0.0:{port} (127.0.0.1, 192.168.1.20)"
+    finally:
+        device.close()
+        server.close()
 
 
 def test_colour_is_by_level_and_a_styled_line_brings_its_own():

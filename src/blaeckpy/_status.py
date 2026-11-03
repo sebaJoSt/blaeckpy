@@ -89,7 +89,7 @@ def snapshot(device) -> dict:
     last = device._last_command
     return {
         "device": {"name": device.name, "hw_version": device.hw_version, "fw_version": device.fw_version},
-        "connection": describe(transport),
+        "connection": device._connection,
         "data": data,
         "entities": not device._entities_stopped,
         "timestamp_mode": str(device._timestamp_mode),
@@ -107,20 +107,66 @@ def _address(address) -> str:
 
 
 def describe(transport) -> str:
-    """The connection in words: "TCP 0.0.0.0:2323" or "Serial COM3 at 115200 baud"."""
+    """The connection in words: "TCP 0.0.0.0:2323 (127.0.0.1, 192.168.1.20)", "TCP
+    127.0.0.1:2323" or "Serial COM3 at 115200 baud"."""
     if transport is None:
         return "Closed"
     server = getattr(transport, "server", None)
     if server is not None:
         try:
-            return "TCP " + _address(server.getsockname())
+            name = server.getsockname()
         except OSError:
             return "TCP"
+        text = "TCP " + _address(name)
+        if is_everywhere(name[0]):
+            text += " (" + ", ".join(reachable_hosts(name[0], server.family)) + ")"
+        return text
     port = transport.port
     name = getattr(port, "port", None) or getattr(port, "name", None)
     text = f"Serial {name}" if isinstance(name, str) else type(port).__name__
     baud = getattr(port, "baudrate", None)
     return f"{text} at {baud} baud" if baud else text
+
+
+def is_everywhere(host: str) -> bool:
+    """0.0.0.0 or ::, listening on all of the computer's addresses."""
+    try:
+        return ipaddress.ip_address(host).is_unspecified
+    except ValueError:
+        return host == ""
+
+
+def network_address(family: int) -> str | None:
+    """The address this computer has on its network, as Flask finds it: a UDP socket
+    "connected" to a private address sends nothing, but the system picks the interface it would
+    use. None without a network. On a VPN it may be the VPN's address: it is only a hint."""
+    target = "fd31:f903:5ab5:1::1" if family == socket.AF_INET6 else "10.253.155.219"
+    try:
+        with socket.socket(family, socket.SOCK_DGRAM) as s:
+            s.connect((target, 58162))
+            address = s.getsockname()[0]
+    except OSError:
+        return None
+    try:
+        if ipaddress.ip_address(address).is_loopback or ipaddress.ip_address(address).is_unspecified:
+            return None
+    except ValueError:
+        return None
+    return address
+
+
+def reachable_hosts(host: str, family: int) -> list[str]:
+    """Where a socket bound to ``host`` is reached: this computer and, when it listens on all
+    addresses, the network address too. IPv6 in brackets, as in a URL."""
+    if is_everywhere(host):
+        v6 = family == socket.AF_INET6
+        hosts = ["::1" if v6 else "127.0.0.1"]
+        network = network_address(family)
+        if network is not None:
+            hosts.append(network)
+    else:
+        hosts = [host]
+    return [f"[{h}]" if ":" in h else h for h in hosts]
 
 
 def _uptime(seconds: float) -> str:
@@ -197,17 +243,6 @@ def bind_address(transport) -> tuple[str, int]:
     return "0.0.0.0", socket.AF_INET
 
 
-def url_host(host: str) -> str:
-    """The host in a link that works from this computer."""
-    try:
-        address = ipaddress.ip_address(host)
-    except ValueError:
-        return host or "127.0.0.1"
-    if address.is_unspecified:
-        return "[::1]" if address.version == 6 else "127.0.0.1"
-    return f"[{host}]" if address.version == 6 else host
-
-
 class StatusPage:
     def __init__(self, device, port: int) -> None:
         from ._device import LIBRARY_VERSION
@@ -228,7 +263,8 @@ class StatusPage:
             log.warning("Port %d is in use; the status page is on port %d instead",
                         port, self._server.server_address[1])
         self.port = self._server.server_address[1]
-        self.url = f"http://{url_host(host)}:{self.port}"
+        self.urls = [f"http://{h}:{self.port}" for h in reachable_hosts(host, family)]
+        self.url = self.urls[0]
         self._thread = threading.Thread(target=self._server.serve_forever, kwargs={"poll_interval": 0.2},
                                         name="blaeckpy status page", daemon=True)
         self._thread.start()

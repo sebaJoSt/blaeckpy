@@ -285,6 +285,7 @@ class Blaeck(_DeviceBase):
 
         self._began = False
         self._status: _status.StatusPage | None = None
+        self._connection = "Closed"
         # The last command received, as (name, time.time()), for the status page.
         self._last_command: tuple[str, float] | None = None
         self._answering = False
@@ -502,18 +503,35 @@ class Blaeck(_DeviceBase):
             lambda slot, address, reason: self._disconnected(slot, address, reason))
         self._began = True
         self._last_command = None
-        where = _status.describe(self._transport)
-        where = "listening on " + where if where.startswith("TCP") else "on " + where[0].lower() + where[1:]
-        banner = f"blaeckpy v{LIBRARY_VERSION}: {self.name!r} {where}"
+        self._connection = _status.describe(self._transport)
+        server = getattr(self._transport, "server", None)
+        name = server.getsockname() if server is not None else None
+        if name is not None and _status.is_everywhere(name[0]):
+            # As Flask does: the addresses it can be reached on, not 0.0.0.0 alone.
+            lines = [f"listening on all addresses ({name[0]})"] + \
+                    [f"  TCP {h}:{name[1]}" for h in _status.reachable_hosts(name[0], server.family)]
+        elif self._connection.startswith("TCP"):
+            lines = ["listening on " + self._connection]
+        else:
+            lines = ["on " + self._connection[0].lower() + self._connection[1:]]
+        banner = f"blaeckpy v{LIBRARY_VERSION}: {self.name!r} {lines[0]}"
         log.info("%s", banner, extra=_console.styled(_console.BOLD + banner))
+        for line in lines[1:]:
+            log.info("%s", line, extra=_console.styled(line))
         if status_port is not None:
             try:
                 self._status = _status.StatusPage(self, status_port)
             except OSError as e:
                 log.warning("No status page: %s", e)
             else:
-                log.info("Status page: %s", self._status.url,
-                         extra=_console.styled(f"Status page: {_console.LINK}{self._status.url}"))
+                urls = self._status.urls
+                if len(urls) == 1:
+                    log.info("Status page: %s", urls[0],
+                             extra=_console.styled(f"Status page: {_console.LINK}{urls[0]}"))
+                else:
+                    log.info("Status page:", extra=_console.styled("Status page:"))
+                    for url in urls:
+                        log.info("  %s", url, extra=_console.styled(f"  {_console.LINK}{url}"))
 
     def _connected(self, slot: int, address) -> None:
         log.info("Client %d connected: %s", slot, _status._address(address))
@@ -533,6 +551,7 @@ class Blaeck(_DeviceBase):
         if self._transport is not None:
             self._transport.close()
         self._transport = None
+        self._connection = "Closed"
         self._began = False
         if self._status is not None:
             self._status.close()
