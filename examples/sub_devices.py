@@ -8,10 +8,10 @@ with both.
 """
 
 import math
+import socket
 import time
 
 from blaeckpy import Blaeck
-from connect import open_transport
 
 device = Blaeck("Greenhouse", fw_version="1.0")
 temperature = device.add_signal("Temperature", float, 21.0, unit="°C")
@@ -39,7 +39,9 @@ def run_pump():
     pressure.value = 2.5 * speed.value / 100
 
 
-device.begin(open_transport(__doc__))
+# Loggbok connects to this computer on TCP port 2323. For serial instead, use
+# device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
+device.begin(socket.create_server(("", 2323)))
 start = last_update = time.monotonic()
 cooling = 0.0
 while True:

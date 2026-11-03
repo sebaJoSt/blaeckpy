@@ -12,10 +12,10 @@ A port of blaeck's Events example. Every 5 s the next event in the list is repor
 Events are reported only while entities are started; one raised meanwhile is lost.
 """
 
+import socket
 import time
 
 from blaeckpy import Blaeck, Category
-from connect import open_transport
 
 HAS_OVERHEAT_SENSOR = True
 
@@ -38,7 +38,9 @@ steps = [(doorbell, "ring"), (button, "press_start"), (button, "press_end"),
 if HAS_OVERHEAT_SENSOR:
     steps.append((system, "overheated"))
 
-device.begin(open_transport(__doc__))
+# Loggbok connects to this computer on TCP port 2323. For serial instead, use
+# device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
+device.begin(socket.create_server(("", 2323)))
 system.write("started")
 event_count.value += 1
 start = last_fired = time.monotonic()

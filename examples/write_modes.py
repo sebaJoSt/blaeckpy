@@ -21,10 +21,10 @@ keep sending. Stop the interval: only Interval and OnChangeAtInterval stop.
 
 import math
 import random
+import socket
 import time
 
 from blaeckpy import OFF, Blaeck, OnChange
-from connect import open_transport
 
 device = Blaeck("WriteModes", fw_version="1.0")
 interval = device.add_signal("Interval", float)
@@ -50,7 +50,9 @@ def value_at(phase_ms: int) -> float:
     return value
 
 
-device.begin(open_transport(__doc__))
+# Loggbok connects to this computer on TCP port 2323. For serial instead, use
+# device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
+device.begin(socket.create_server(("", 2323)))
 start = time.monotonic()
 while True:
     value = value_at(int((time.monotonic() - start) * 1000) % 36000)

@@ -13,7 +13,19 @@ import pytest
 from blaeckpy.protocol import envelope
 
 EXAMPLES = Path(__file__).parent.parent / "examples"
-SCRIPTS = sorted(p for p in EXAMPLES.glob("*.py") if p.name != "connect.py")
+SCRIPTS = sorted(EXAMPLES.glob("*.py"))
+
+# Runs an example with its fixed TCP port swapped for a free one, which it prints.
+LAUNCHER = """
+import runpy, socket, sys
+create_server = socket.create_server
+def on_free_port(address, *args, **kwargs):
+    server = create_server((address[0], 0), *args, **kwargs)
+    print("TCP port", server.getsockname()[1], flush=True)
+    return server
+socket.create_server = on_free_port
+runpy.run_path(sys.argv[1], run_name="__main__")
+"""
 
 
 def frames_in(data: bytes) -> list:
@@ -27,7 +39,7 @@ def frames_in(data: bytes) -> list:
 
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.stem)
 def test_example_runs_and_answers_a_host(script):
-    process = subprocess.Popen([sys.executable, "-u", str(script), "--tcp", "0"], cwd=EXAMPLES,
+    process = subprocess.Popen([sys.executable, "-u", "-c", LAUNCHER, str(script)], cwd=EXAMPLES,
                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     try:
         line = process.stdout.readline()

@@ -130,8 +130,9 @@ A few things are Python's own:
 
 ## Examples
 
-The examples are in [`examples/`](examples). Run one with `--tcp PORT` (2323 by default) or
-`--serial PORT`, and point Loggbok at it. They are ports of blaeck's examples of the same names.
+The examples are in [`examples/`](examples). Each one is a single file that listens on TCP port
+2323; a comment shows the line to use for serial instead. Run one and point Loggbok at it. They
+are ports of blaeck's examples of the same names.
 
 | Example | What it teaches |
 |---|---|

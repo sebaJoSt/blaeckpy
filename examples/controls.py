@@ -12,8 +12,9 @@ the functions given to on_change run after it is stored. A simulated room temper
 the setpoint while the heater is on.
 """
 
+import socket
+
 from blaeckpy import Blaeck, Category
-from connect import open_transport
 
 device = Blaeck("Controls", fw_version="1.0")
 setpoint = device.add_number_input("Setpoint", 21.0, min=5.0, max=30.0, step=0.5, unit="°C",
@@ -50,7 +51,9 @@ device.add_button("Reset", reset, icon="mdi:restore")
 device.add_button("Boost", lambda: setattr(setpoint, "value", min(setpoint.value + 2.0, 30.0)),
                   icon="mdi:fire")
 
-device.begin(open_transport(__doc__))
+# Loggbok connects to this computer on TCP port 2323. For serial instead, use
+# device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
+device.begin(socket.create_server(("", 2323)))
 while True:
     heating = heater_enabled.value and mode.option != "Off"
     target = setpoint.value if heating else 15.0

@@ -13,8 +13,9 @@ on_any_command() sees every command; here it logs each one by name, except the B
 commands Loggbok sends.
 """
 
+import socket
+
 from blaeckpy import Blaeck
-from connect import open_transport
 
 device = Blaeck("Commands", fw_version="1.0")
 led_on = False
@@ -56,6 +57,8 @@ def log_command(command: str, *params: str) -> bool:
     return False
 
 
-device.begin(open_transport(__doc__))
+# Loggbok connects to this computer on TCP port 2323. For serial instead, use
+# device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
+device.begin(socket.create_server(("", 2323)))
 while True:
     device.tick(timeout=0.1)

@@ -11,10 +11,10 @@ A port of blaeck's Sensors example. tick() checks every sensor and sends the one
 Temperature is sent when it moves by 0.1 or more, at most once a second.
 """
 
+import socket
 import time
 
 from blaeckpy import Blaeck, Category
-from connect import open_transport
 
 device = Blaeck("Sensors", fw_version="1.0")
 temperature = device.add_sensor("Temperature", 18.0, unit="°C", device_class="temperature",
@@ -25,7 +25,9 @@ phase = device.add_sensor("Phase", 0, options=["Idle", "Heating", "Cooling"])
 last_error = device.add_sensor("LastError", "", icon="mdi:alert-circle",
                                category=Category.DIAGNOSTIC)
 
-device.begin(open_transport(__doc__))
+# Loggbok connects to this computer on TCP port 2323. For serial instead, use
+# device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
+device.begin(socket.create_server(("", 2323)))
 start = last_update = time.monotonic()
 while True:
     now = time.monotonic()
