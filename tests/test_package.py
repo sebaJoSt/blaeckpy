@@ -3,7 +3,7 @@ from blaeckpy import _device
 
 
 def test_version_comes_from_the_package_metadata():
-    assert blaeckpy.__version__ == "1.0.0.dev0"
+    assert blaeckpy.__version__ == "1.0.0"
 
 
 def test_the_device_list_names_blaeckpy_and_its_own_version():

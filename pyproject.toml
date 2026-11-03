@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "blaeckpy"
-version = "1.0.0.dev0"
+version = "1.0.0"
 description = "A Python library for signals, Home Assistant entities and commands over serial or TCP, using the blaeck protocol"
 readme = "README.md"
 authors = [
