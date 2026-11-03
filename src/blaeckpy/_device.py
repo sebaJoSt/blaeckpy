@@ -669,7 +669,8 @@ class Blaeck(_DeviceBase):
         if self._may_write_data():
             for sig in self._signals:
                 r = sig._reporting
-                if r is not None and r.immediate and changed(sig.type, sig.value, r, r.change_delta):
+                if (r is not None and r.immediate and not self._is_missing(sig.device_id)
+                        and changed(sig.type, sig.value, r, r.change_delta)):
                     times.append(r.last_write_ms + r.min_interval_ms if r.valid else now)
         if self._may_write_entities():
             for prop in self._properties:

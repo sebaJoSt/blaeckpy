@@ -337,3 +337,28 @@ def test_a_text_that_is_not_utf8_goes_back_out_as_the_same_bytes():
     frames = _decode.Decoder().feed(bytes(port.outgoing))
     frames = [f for f in frames if isinstance(f, _decode.Frame)]
     assert [f.body.properties[0].value for f in frames if f.key == 0x90] == ["\udcff"]
+
+
+def test_a_change_on_a_missing_device_doesnt_keep_tick_from_waiting_and_goes_out_on_its_return():
+    device, port = Blaeck(), Port()
+    pump = device.add_device("Pump")
+    flow = pump.add_signal("Flow", 1.0, write_on_change=0.0, min_interval_ms=0)
+    device.begin(port)
+    port.incoming += b"<BLAECK.GET_DEVICES><BLAECK.DATA_START>"
+    device.tick()
+    device.tick()
+
+    pump.mark_missing()
+    flow.value = 2.0
+    passes = device._pass
+    device.tick(timeout=0.1)
+    assert device._pass - passes < 100  # With nothing to select on it polls every 10 ms.
+
+    def values():
+        frames = _decode.Decoder().feed(bytes(port.outgoing))
+        return [f.body.values for f in frames if isinstance(f, _decode.Frame) and f.key == 0xD3]
+
+    assert {0: 2.0} not in values()
+    pump.mark_present()
+    device.tick()
+    assert values()[-1] == {0: 2.0}
