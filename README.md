@@ -95,6 +95,7 @@ declare on a sub-device.
 | `onConnect`, `onDisconnect` | `@device.on_connect`, `@device.on_disconnect` | TCP connections, with `(client_no, address)` |
 | `Terminal` | `device.terminal.print(...)` | Text for whoever looks into the running device |
 | `setTimestampMode` | `set_timestamp_mode(TimestampMode.MICROS)` | Timestamps in data frames |
+| `clearAllSignals`, `clearAllControls`, `clearAllSensors`, `clearAllEvents`, `clearAllCommands` | `clear_all_signals()`, `clear_all_controls()`, ... | Declaring a new set while running |
 
 A few things are Python's own:
 

@@ -326,6 +326,50 @@ class Blaeck(_DeviceBase):
     def _catalog_changed(self) -> None:
         self._catalog_dirty = True
 
+    # ----- clearing, to declare a new set while running -----
+
+    def clear_all_signals(self) -> None:
+        """Removes every signal, the sub-devices' too, so a new set can be added. A host learns
+        of the new signals from the next device list it asks for; one that is logging stops at
+        the next data frame, whose schema hash no longer matches its columns."""
+        for sig in self._signals:
+            sig._removed = True
+        self._signals.clear()
+
+    def clear_all_controls(self) -> None:
+        """Removes every input and button, the sub-devices' too. Sensors stay. The new entity
+        list goes to the host at the next tick()."""
+        self._clear_properties(writable=True)
+        if self._buttons:
+            self._buttons.clear()
+            self._catalog_changed()
+
+    def clear_all_sensors(self) -> None:
+        """Removes every sensor, the sub-devices' too. Controls stay. The new entity list goes
+        to the host at the next tick()."""
+        self._clear_properties(writable=False)
+
+    def clear_all_events(self) -> None:
+        """Removes every event and its types, the sub-devices' too. The new entity list goes to
+        the host at the next tick()."""
+        if self._events:
+            for event in self._events:
+                event._removed = True
+            self._events.clear()
+            self._catalog_changed()
+
+    def clear_all_commands(self) -> None:
+        """Removes every plain command from on_command(), and the on_any_command() function.
+        Buttons stay: they go with clear_all_controls()."""
+        self._plain_commands.clear()
+        self._any_command = None
+
+    def _clear_properties(self, writable: bool) -> None:
+        kept = [p for p in self._properties if p.writable != writable]
+        if len(kept) != len(self._properties):
+            self._properties[:] = kept
+            self._catalog_changed()
+
     def on_any_command(self, fn: Callable):
         """Sees every command, after its own function: ``fn(command, *params)``. Its answer
         counts only where nothing took the command: True answers OK, False or None UNKNOWN."""
@@ -512,19 +556,20 @@ class Blaeck(_DeviceBase):
         self._write_restarted()
         self._write_device_notices()
         received = self._transport.receive()
-        if received is None:
-            return
-        cmd = _commands.parse(*received)
-        # Before the truncation check, so even a cut-off built-in makes its sender the host.
-        if cmd.name.startswith("BLAECK."):
-            self._transport.builtin_received()
-        self._answering = True
-        try:
-            self._answer(cmd)
-            # Send any catalog a handler changed.
+        if received is not None:
+            cmd = _commands.parse(*received)
+            # Before the truncation check, so even a cut-off built-in makes its sender the host.
+            if cmd.name.startswith("BLAECK."):
+                self._transport.builtin_received()
+            self._answering = True
+            try:
+                self._answer(cmd)
+                self._flush_catalogs()
+            finally:
+                self._answering = False
+        else:
+            # Send any catalog the script changed since, as blaeck's read() does on every call.
             self._flush_catalogs()
-        finally:
-            self._answering = False
 
     def _write_restarted(self) -> None:
         # Held back until a host can hear it.

@@ -186,3 +186,32 @@ def test_a_missing_device_refuses_commands_and_comes_back():
     assert ack_reason(device, port, "<PRIME,1>") == 8 and calls == []
     pump.mark_present()
     assert ack_reason(device, port, "<PRIME,1>") == 0 and calls == [("1",)]
+
+
+def test_clearing_lets_a_new_set_be_declared_and_old_handles_say_so():
+    device = Blaeck()
+    pump = device.add_device("Pump")
+    old_signal = pump.add_signal("Flow", 0.0)
+    old_event = device.add_event("Alarms", ["a"])
+    device.add_switch("Heater")
+    device.add_button("Reset", lambda: None)
+    device.add_sensor("Room", 1.0)
+    device.on_command("MOTOR", lambda *p: None)
+    device.clear_all_signals()
+    device.clear_all_events()
+    device.clear_all_controls()
+    device.clear_all_commands()
+    with pytest.raises(RuntimeError):
+        old_signal.write(1.0)
+    with pytest.raises(RuntimeError):
+        old_event.write("a")
+    # The names are free again; the sensor stays, as sensors go with clear_all_sensors().
+    pump.add_signal("Flow", 0)
+    device.add_event("Alarms", ["b"])
+    device.add_switch("Heater")
+    device.add_button("Reset", lambda: None)
+    device.on_command("MOTOR", lambda *p: None)
+    with pytest.raises(ValueError):
+        device.add_sensor("Room", 2.0)
+    device.clear_all_sensors()
+    device.add_sensor("Room", 2.0)

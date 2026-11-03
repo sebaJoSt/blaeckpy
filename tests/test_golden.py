@@ -59,7 +59,9 @@ class FakeClock:
 
 
 SUPPORTED_STEPS = {"command", "set_signal", "set_property", "advance_ms", "tick", "write_all",
-                   "write_event", "mark_missing", "mark_present", "write_restarted"}
+                   "write_event", "mark_missing", "mark_present", "write_restarted",
+                   "clear_all_signals", "clear_all_controls", "clear_all_sensors", "clear_all_events",
+                   "clear_all_commands"}
 
 
 def missing_features(scenario):
@@ -194,6 +196,9 @@ def play(scenario):
             devices[arg].mark_present()
         elif kind == "write_restarted":
             devices[arg].write_restarted()
+        elif kind.startswith("clear_all_"):
+            getattr(device, kind)()
+            device.tick()
         elif kind == "advance_ms":
             device._clock.ms += int(arg)
             device.tick()

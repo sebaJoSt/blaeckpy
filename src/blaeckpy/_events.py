@@ -23,6 +23,7 @@ class Event:
         self.name = name
         self.types = types
         self._presentation = presentation
+        self._removed = False
 
     def add_type(self, type_: str) -> None:
         """One more type, at the end of the list. Hosts learn of it from the entity list."""
@@ -34,6 +35,8 @@ class Event:
 
     def write(self, type_: str) -> None:
         """Reports the event now. While entities are stopped it is lost, as in blaeck."""
+        if self._removed:
+            raise RuntimeError(f"event {self.name!r} was removed by clear_all_events()")
         if type_ not in self.types:
             raise ValueError(f"{self.name!r} has no event type {type_!r}")
         self._device._write_event(self, self.types.index(type_))

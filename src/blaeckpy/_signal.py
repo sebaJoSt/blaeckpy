@@ -150,6 +150,7 @@ class Signal:
         self.device_id = device_id
         self.name = name
         self.unit = unit
+        self._removed = False
         self.type = type_
         self.dtype = _DTYPES[type_]
         self._value = value
@@ -184,6 +185,8 @@ class Signal:
         """Sends the signal now, set to ``value`` if one is given."""
         if value is not None:
             self.value = value
+        if self._removed:
+            raise RuntimeError(f"signal {self.name!r} was removed by clear_all_signals()")
         self._device._write_signal_now(self, timestamp)
 
     def __repr__(self) -> str:

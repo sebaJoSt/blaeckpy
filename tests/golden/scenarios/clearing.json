@@ -1,0 +1,40 @@
+{
+  "description": "clearAll...() while running: each removes its own kind across the board, sub-devices included; the entity list goes out by itself when something was removed and not otherwise; cleared names are answered as unknown; cleared signals leave the device list and the data.",
+  "board": {"name": "Clearing"},
+  "signals": [{"name": "Temperature", "type": "float", "value": 21.5, "unit": "°C"}],
+  "properties": [
+    {"kind": "number_input", "name": "Setpoint", "type": "float", "value": 20.0},
+    {"kind": "switch", "name": "Heater", "value": true},
+    {"kind": "sensor", "name": "Room", "type": "float", "value": 19.5}
+  ],
+  "events": [{"name": "Alarms", "types": ["Overheat"]}],
+  "buttons": [{"name": "Reset"}],
+  "commands": ["MOTOR"],
+  "devices": [
+    {"name": "Pump",
+     "signals": [{"name": "Flow", "type": "float", "value": 2.5}],
+     "properties": [{"kind": "number_input", "name": "PumpSpeed", "type": "int", "value": 0},
+                    {"kind": "sensor", "name": "PumpLevel", "type": "int", "value": 3}],
+     "events": [{"name": "Alarms", "types": ["restarted"]}],
+     "buttons": [{"name": "Prime"}]}
+  ],
+  "steps": [
+    {"command": "<BLAECK.GET_DEVICES>"},
+    {"command": "<BLAECK.ENTITIES_START>"},
+    {"clear_all_controls": true},
+    {"command": "<Setpoint,25>"},
+    {"command": "<Prime>"},
+    {"command": "<Room,1>"},
+    {"clear_all_controls": true},
+    {"clear_all_events": true},
+    {"clear_all_sensors": true},
+    {"clear_all_events": true},
+    {"command": "<MOTOR,1>"},
+    {"clear_all_commands": true},
+    {"command": "<MOTOR,1>"},
+    {"command": "<BLAECK.WRITE_DATA>"},
+    {"clear_all_signals": true},
+    {"command": "<BLAECK.GET_DEVICES>"},
+    {"command": "<BLAECK.WRITE_DATA>"}
+  ]
+}
