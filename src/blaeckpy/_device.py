@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import logging
+import select
+import time
 from collections.abc import Callable
 from importlib.metadata import version as _version
 
@@ -151,6 +153,22 @@ class _DeviceBase:
 
 
 
+class Terminal:
+    """Text to whoever looks into the running device: on serial the port itself, on TCP every
+    connection but the host. Use it like print()."""
+
+    def __init__(self, device: "Blaeck") -> None:
+        self._device = device
+
+    def write(self, text: str) -> None:
+        t = self._device._transport
+        if t is not None:
+            t.terminal(text.encode("utf-8"))
+
+    def print(self, *values, sep: str = " ", end: str = "\n") -> None:
+        self.write(sep.join(str(v) for v in values) + end)
+
+
 class SubDevice(_DeviceBase):
     """A second board, or a part of this one, that a host shows below the board as a device of
     its own. Declare its signals and entities on it, as on the board. The script talks to it and
@@ -205,8 +223,11 @@ class Blaeck(_DeviceBase):
         self.fw_version = fw_version
         self._signals: list[Signal] = []
         self._transport = None
-        self._receiver = _commands.Receiver()
         self._clock = _clock.Clock()
+        self.terminal = Terminal(self)
+        self._ticks_without_wait = 0
+        self._tick_second = 0
+        self._hinted = False
         self._timestamp_mode = TimestampMode.NONE
         self._timestamp_clock: Callable[[], int] | None = None
 
@@ -218,6 +239,7 @@ class Blaeck(_DeviceBase):
         self._interval_ms = 1000
         self._last_interval_ms = 0
 
+        self._began = False
         self._answering = False
         self._requested = False
         self._restart_reported = False
@@ -354,15 +376,42 @@ class Blaeck(_DeviceBase):
 
     # ----- transport and loop -----
 
-    def begin(self, transport) -> None:
-        """Starts using an opened serial port. Once only."""
-        if self._transport is not None:
+    def begin(self, transport, *, max_clients: int | None = None) -> None:
+        """Starts using a serial port or a listening TCP socket the script opened. Once only.
+
+        On TCP, up to ``max_clients`` connections (4 by default): the newest to send a BLAECK.
+        command is the host, the others are terminals.
+        """
+        if self._began:
             raise RuntimeError("begin() was called already")
-        self._transport = _transport.transport_for(transport)
+        if max_clients is not None and not hasattr(transport, "accept"):
+            raise TypeError("max_clients is for a TCP server, not a serial port")
+        self._transport = _transport.transport_for(
+            transport, 4 if max_clients is None else max_clients,
+            lambda slot, address: self._call("connect", slot, address),
+            lambda slot, address, reason: self._disconnected(slot, address, reason))
+        self._began = True
+
+    def _disconnected(self, slot: int, address, reason: str | None) -> None:
+        if reason:
+            log.info("client %d disconnected: %s", slot, reason)
+        self._call("disconnect", slot, address)
 
     def close(self) -> None:
-        """Stops using the transport; it stays open, for the script to close."""
+        """Stops using the transport. A serial port or listening socket stays open, for the
+        script to close; the connections blaeckpy accepted are closed."""
+        if self._transport is not None:
+            self._transport.close()
         self._transport = None
+
+    def on_connect(self, fn):
+        """``fn(client_no, address)`` when a TCP connection opens: its slot, from 0, and the
+        peer's ``(host, port)``."""
+        return self._register("connect", fn)
+
+    def on_disconnect(self, fn):
+        """``fn(client_no, address)`` when a TCP connection closes or is replaced as host."""
+        return self._register("disconnect", fn)
 
     def __enter__(self):
         return self
@@ -371,11 +420,78 @@ class Blaeck(_DeviceBase):
         self.close()
 
     def tick(self, timestamp: int | None = None, timeout: float = 0.0) -> None:
-        """Reads a command and answers it, then sends what is due."""
-        if timeout:
-            raise NotImplementedError("tick(timeout=) comes with the TCP transport")
-        self._read()
-        self._write_if_due(timestamp)
+        """Reads a command and answers it, then sends what is due.
+
+        With ``timeout`` (seconds, as paho-mqtt's ``loop(timeout=)``), it then waits up to that
+        long, answering commands as they arrive and sending what falls due in the meantime on
+        time. ``timeout=0``, the default, never waits, as in blaeck. A timestamp belongs to the
+        moment of the call, so it can't be combined with a timeout.
+        """
+        if timeout and timestamp is not None:
+            raise ValueError("pass a timestamp or a timeout, not both")
+        if timeout < 0:
+            raise ValueError("timeout is 0 or more seconds")
+        if not timeout:
+            self._hint_busy_loop()
+            self._read()
+            self._write_if_due(timestamp)
+            return
+        deadline = time.monotonic() + timeout
+        while True:
+            self._read()
+            self._write_if_due(None)
+            now = time.monotonic()
+            if now >= deadline:
+                return
+            if self._transport is not None and self._transport_pending():
+                continue
+            wait = deadline - now
+            due = self._next_due_ms()
+            if due is not None:
+                wait = min(wait, max(0.0, (due - self._clock.millis()) / 1000))
+            waitables = self._transport.selectables() if self._transport is not None else []
+            if waitables:
+                select.select(waitables, [], [], wait)
+            else:
+                # Nothing to wait on (no transport, or a serial port on Windows): poll in steps.
+                time.sleep(min(wait, 0.01))
+
+    def _transport_pending(self) -> bool:
+        """A complete command already taken in, which select() would not wake for."""
+        t = self._transport
+        receivers = [t._receiver] if isinstance(t, _transport.StreamTransport) else \
+            [c.receiver for c in t.slots if c is not None]
+        return any(r.has_command() for r in receivers)
+
+    def _next_due_ms(self) -> int | None:
+        """When the next write falls due, by this device's clock, or None if nothing waits."""
+        now = self._clock.millis()
+        times = []
+        if self._timed and self._may_write_data():
+            times.append(now if self._timed_first or self._interval_ms == 0
+                         else self._last_interval_ms + self._interval_ms)
+        if self._may_write_data():
+            for sig in self._signals:
+                r = sig._reporting
+                if r is not None and r.immediate and changed(sig.type, sig.value, r, r.change_delta):
+                    times.append(r.last_write_ms + r.min_interval_ms if r.valid else now)
+        if self._may_write_entities():
+            for prop in self._properties:
+                r = prop._reporting
+                if not self._is_missing(prop.device_id) and prop._changed():
+                    times.append(r.last_write_ms + r.min_interval_ms if r.valid else now)
+        return min(times) if times else None
+
+    def _hint_busy_loop(self) -> None:
+        """One hint on the logger when tick() spins without ever waiting."""
+        second = int(time.monotonic())
+        if second != self._tick_second:
+            self._tick_second, self._ticks_without_wait = second, 0
+        self._ticks_without_wait += 1
+        if self._ticks_without_wait == 1000 and not self._hinted:
+            self._hinted = True
+            log.info("tick() is called more than 1000 times a second; pass timeout= to let it "
+                     "wait instead of using a whole CPU core")
 
     def write_all(self, timestamp: int | None = None) -> None:
         """Sends every signal now."""
@@ -384,36 +500,44 @@ class Blaeck(_DeviceBase):
     # ----- what read() does -----
 
     def _ready(self) -> bool:
-        return self._transport is not None
+        """A host to send frames to: on serial always, on TCP once one sent a BLAECK. command."""
+        return self._transport is not None and self._transport.has_host()
 
     def _send(self, frame: bytes) -> None:
-        self._transport.write(frame)
+        self._transport.send(frame)
 
     def _read(self) -> None:
-        if not self._ready():
+        if self._transport is None:
             return
         self._write_restarted()
         self._write_device_notices()
-        self._receiver.feed(self._transport.read_available())
-        received = self._receiver.next_command()
+        received = self._transport.receive()
         if received is None:
             return
+        cmd = _commands.parse(*received)
+        # Before the truncation check, so even a cut-off built-in makes its sender the host.
+        if cmd.name.startswith("BLAECK."):
+            self._transport.builtin_received()
         self._answering = True
         try:
-            self._answer(_commands.parse(*received))
+            self._answer(cmd)
             # Send any catalog a handler changed.
             self._flush_catalogs()
         finally:
             self._answering = False
 
     def _write_restarted(self) -> None:
-        if self._restart_reported:
+        # Held back until a host can hear it.
+        if self._restart_reported or not self._ready():
             return
         self._restart_reported = True
         self._send(frames.device_notification(0, frames.DeviceEvent.RESTARTED))
         self._send_entity_list(0)
 
     def _ack(self, cmd: _commands.Command, reason: int) -> None:
+        # A terminal's commands run, but only the host is answered.
+        if not self._ready() or not self._transport.requester_is_host():
+            return
         name_hash = frames.fnv1a32(cmd.name.encode("utf-8", "surrogateescape")) if cmd.name else 0
         self._send(frames.command_ack(frames.fnv1a32(cmd.raw[cmd.prefix_len:]), name_hash, reason,
                                       cmd.message_id))

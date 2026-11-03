@@ -23,6 +23,10 @@ class Receiver:
     def feed(self, data: bytes) -> None:
         self._pending += data
 
+    def has_command(self) -> bool:
+        """Whether a complete command is waiting to be taken."""
+        return 0x3E in self._pending and (self._in_progress or 0x3C in self._pending)
+
     def next_command(self) -> tuple[bytes, bool] | None:
         """The next complete command and whether it overflowed, or None. Bytes after it wait."""
         while self._pending:
