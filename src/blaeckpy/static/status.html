@@ -37,6 +37,7 @@
     .entity-table th:nth-child(2), .entity-table td:nth-child(2) { width:13%; }
     .entity-table th:nth-child(3), .entity-table td:nth-child(3) { width:52%; }
     .muted { opacity:.6; }
+    details summary:not([role]) { color:var(--pico-color) !important; }
     article table { margin-bottom:0; }
   </style>
 </head>
@@ -180,7 +181,7 @@
   }
 
   // Which device sections the user closed, so a refresh keeps them closed.
-  var closed = {};
+  var closedDevices = {};
 
   function renderDevices(devices, now) {
     var html = '';
@@ -189,7 +190,7 @@
         ' &nbsp; <span class="status-dot ' + (d.missing ? 'down' : 'up') + '" title="' +
         (d.missing ? 'Not responding' : 'Responding') + '"></span>';
       var title = idx === 0 ? esc(d.name) : esc(d.name) + ' <span class="muted">(sub-device)</span>';
-      html += '<article><details data-key="' + esc(d.name) + '"' + (closed[d.name] ? '' : ' open') + '>' +
+      html += '<article><details data-key="' + esc(d.name) + '"' + (closedDevices[d.name] ? '' : ' open') + '>' +
         '<summary><strong>' + title + '</strong> <span class="muted">· Signals (' + d.signals.length + ') · Entities (' + d.entities.length + ')</span>' + dot + '</summary>' +
         (idx === 0 ? '' : '<p class="muted">HW ' + esc(d.hw_version) + ' · FW ' + esc(d.fw_version) + '</p>') +
         '<h4>Signals</h4><table class="signal-table striped"><thead><tr><th>#</th><th>Name</th><th>Type</th><th>Value</th></tr></thead>' +
@@ -201,7 +202,7 @@
     var container = document.getElementById('devices');
     if (!setHtml(container, html)) return;
     container.querySelectorAll('details').forEach(function(el) {
-      el.addEventListener('toggle', function() { closed[el.dataset.key] = !el.open; });
+      el.addEventListener('toggle', function() { closedDevices[el.dataset.key] = !el.open; });
     });
   }
 

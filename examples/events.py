@@ -41,6 +41,7 @@ if HAS_OVERHEAT_SENSOR:
 # Loggbok connects to this computer on TCP port 2323. For serial instead, use
 # device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
 device.begin(socket.create_server(("", 2323)))
+print("##LOGGBOK:READY##")  # Sentinel for Loggbok's process launcher — safe to remove
 system.write("started")
 event_count.value += 1
 start = last_fired = time.monotonic()

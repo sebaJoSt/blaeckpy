@@ -53,6 +53,7 @@ def value_at(phase_ms: int) -> float:
 # Loggbok connects to this computer on TCP port 2323. For serial instead, use
 # device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
 device.begin(socket.create_server(("", 2323)))
+print("##LOGGBOK:READY##")  # Sentinel for Loggbok's process launcher — safe to remove
 start = time.monotonic()
 while True:
     value = value_at(int((time.monotonic() - start) * 1000) % 36000)

@@ -15,6 +15,7 @@ big = device.add_signal("Big Number", int)
 # Loggbok connects to this computer on TCP port 2323. For serial instead, use
 # device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
 device.begin(socket.create_server(("", 2323)))
+print("##LOGGBOK:READY##")  # Sentinel for Loggbok's process launcher — safe to remove
 while True:
     small.value = random.randint(0, 1000) / 100
     big.value = random.randint(2_000_000_000, 2_100_000_000)

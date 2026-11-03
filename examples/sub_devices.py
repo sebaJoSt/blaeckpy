@@ -42,6 +42,7 @@ def run_pump():
 # Loggbok connects to this computer on TCP port 2323. For serial instead, use
 # device.begin(serial.Serial("COM3", 115200, timeout=0)) after import serial (pip install pyserial).
 device.begin(socket.create_server(("", 2323)))
+print("##LOGGBOK:READY##")  # Sentinel for Loggbok's process launcher — safe to remove
 start = last_update = time.monotonic()
 cooling = 0.0
 while True:
