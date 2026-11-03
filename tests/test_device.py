@@ -126,6 +126,21 @@ def test_parameters_are_decoded_then_trimmed(raw, params):
     assert parse(raw, False).params == params
 
 
+def test_the_receiver_keeps_commands_in_order_however_they_arrive():
+    from blaeckpy._commands import Receiver
+    receiver = Receiver()
+    # A flood at once, with noise, an abandoned command and one split across two feeds.
+    receiver.feed(b"noise" + b"".join(b"<C,%d>" % i for i in range(20000)) + b"<lost<A,")
+    receiver.feed(b"1>tail")
+    taken = []
+    while (command := receiver.next_command()) is not None:
+        taken.append(command[0])
+    assert taken == [b"C,%d" % i for i in range(20000)] + [b"A,1"]
+    assert not receiver.has_command()
+    receiver.feed(b"<B>")
+    assert receiver.has_command() and receiver.next_command() == (b"B", False)
+
+
 @pytest.mark.parametrize("mode", ["none", "micros", "unix"])
 def test_timestamp_modes_take_enums_or_strings(mode):
     from blaeckpy import TimestampMode

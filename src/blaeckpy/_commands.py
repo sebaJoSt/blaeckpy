@@ -21,36 +21,53 @@ class Receiver:
         self._in_progress = False
         self._overflowed = False
         self._pending = bytearray()
+        # How far into _pending has been read. The bytes before it go only once that is most of
+        # it: dropping a few from the front moves everything behind them.
+        self._read = 0
 
     def feed(self, data: bytes) -> None:
         self._pending += data
 
     def has_command(self) -> bool:
         """Whether a complete command is waiting to be taken."""
-        return 0x3E in self._pending and (self._in_progress or 0x3C in self._pending)
+        p, r = self._pending, self._read
+        return p.find(0x3E, r) >= 0 and (self._in_progress or p.find(0x3C, r) >= 0)
 
     def next_command(self) -> tuple[bytes, bool] | None:
         """The next complete command and whether it overflowed, or None. Bytes after it wait."""
-        while self._pending:
-            b = self._pending.pop(0)
-            if self._in_progress:
-                if b == 0x3C:
-                    self._chars.clear()
+        pending = self._pending
+        i, end = self._read, len(pending)
+        try:
+            while i < end:
+                b = pending[i]
+                i += 1
+                if self._in_progress:
+                    if b == 0x3C:
+                        self._chars.clear()
+                        self._overflowed = False
+                    elif b != 0x3E:
+                        self._chars.append(b)
+                        if len(self._chars) >= COMMAND_MAX_CHARS:
+                            del self._chars[COMMAND_MAX_CHARS - 1:]
+                            self._overflowed = True
+                    else:
+                        raw = bytes(self._chars)
+                        self._chars.clear()
+                        self._in_progress = False
+                        return raw, self._overflowed
+                elif b == 0x3C:
+                    self._in_progress = True
                     self._overflowed = False
-                elif b != 0x3E:
-                    self._chars.append(b)
-                    if len(self._chars) >= COMMAND_MAX_CHARS:
-                        del self._chars[COMMAND_MAX_CHARS - 1:]
-                        self._overflowed = True
-                else:
-                    raw = bytes(self._chars)
-                    self._chars.clear()
-                    self._in_progress = False
-                    return raw, self._overflowed
-            elif b == 0x3C:
-                self._in_progress = True
-                self._overflowed = False
-        return None
+            return None
+        finally:
+            if i >= end:
+                pending.clear()
+                self._read = 0
+            elif i > end // 2:
+                del pending[:i]
+                self._read = 0
+            else:
+                self._read = i
 
 
 @dataclass
