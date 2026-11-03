@@ -136,7 +136,12 @@ Client 0 connected: 192.168.1.20:51234
 ```
 
 These lines go through the `blaeckpy` logger. Once a script configures logging itself, with
-`logging.basicConfig()` say, they go to its handlers instead.
+`logging.basicConfig()` say, they go to its handlers instead. blaeckpy logs from level INFO
+whatever `basicConfig()` was given, so the level is set on its logger:
+
+```python
+logging.getLogger("blaeckpy").setLevel(logging.WARNING)   # only warnings and errors
+```
 
 The status page shows the device in a browser: its connection, the clients connected, and each
 device's signals and entities with their current values, refreshed every second. It needs no

@@ -71,8 +71,8 @@ class _Formatter(logging.Formatter):
 
 
 class ConsoleHandler(logging.StreamHandler):
-    """Prints on stderr until the root logger has a handler: then the script configured
-    logging, and blaeckpy's messages reach it through propagation instead."""
+    """Prints on stderr until the script has a handler of its own, on the root logger or on
+    blaeckpy's: then the script configured logging, and the messages reach that instead."""
 
     def __init__(self) -> None:
         logging.Handler.__init__(self)
@@ -84,7 +84,7 @@ class ConsoleHandler(logging.StreamHandler):
         return sys.stderr
 
     def emit(self, record: logging.LogRecord) -> None:
-        if not logging.getLogger().handlers:
+        if not logging.getLogger().handlers and len(logging.getLogger("blaeckpy").handlers) == 1:
             super().emit(record)
 
     def format(self, record: logging.LogRecord) -> str:

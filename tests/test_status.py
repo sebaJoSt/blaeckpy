@@ -300,3 +300,33 @@ def test_colour_goes_with_the_stderr_of_the_moment(monkeypatch):
     with console(monkeypatch, plain) as log:
         log.info("two")
     assert "\033[" in tty.getvalue() and plain.getvalue() == "two\n"
+
+
+def test_a_handler_of_the_script_on_the_logger_takes_over_from_the_console(monkeypatch):
+    stderr, mine = io.StringIO(), []
+
+    class Mine(logging.Handler):
+        def emit(self, record):
+            mine.append(record.getMessage())
+
+    handler = Mine()
+    with console(monkeypatch, stderr) as log:
+        log.addHandler(handler)
+        try:
+            log.info("one")
+        finally:
+            log.removeHandler(handler)
+        log.info("two")
+    assert mine == ["one"] and stderr.getvalue() == "two\n"
+
+
+def test_the_level_is_set_on_the_logger(monkeypatch):
+    stderr = io.StringIO()
+    with console(monkeypatch, stderr) as log:
+        log.setLevel(logging.WARNING)
+        try:
+            log.info("one")
+            log.warning("two")
+        finally:
+            log.setLevel(logging.INFO)
+    assert stderr.getvalue() == "two\n"
