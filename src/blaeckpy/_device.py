@@ -521,18 +521,22 @@ class Blaeck(_DeviceBase):
         self._connection = _status.describe(self._transport)
         server = getattr(self._transport, "server", None)
         name = server.getsockname() if server is not None else None
+        # (text, the part shown bold): the library and where it is reached stand out.
         if server is not None and name is not None and _status.is_everywhere(name[0]):
             # As Flask does: the addresses it can be reached on, not 0.0.0.0 alone.
-            lines = [f"listening on all addresses ({name[0]})"] + \
-                    [f"  TCP {h}:{name[1]}" for h in _status.reachable_hosts(name[0], server.family)]
+            where = ("listening on ", f"all addresses ({name[0]})")
+            more = [f"TCP {h}:{name[1]}" for h in _status.reachable_hosts(name[0], server.family)]
         elif self._connection.startswith("TCP"):
-            lines = ["listening on " + self._connection]
+            where, more = ("listening on ", self._connection), []
         else:
-            lines = ["on " + self._connection[0].lower() + self._connection[1:]]
-        banner = f"blaeckpy v{LIBRARY_VERSION}: {self.name!r} {lines[0]}"
-        log.info("%s", banner, extra=_console.styled(_console.BOLD + banner))
-        for line in lines[1:]:
-            log.info("%s", line, extra=_console.styled(line))
+            where, more = ("on ", self._connection[0].lower() + self._connection[1:]), []
+        B, R = _console.BOLD, _console.RESET
+        library = f"blaeckpy v{LIBRARY_VERSION}"
+        banner = f"{library}: {self.name!r} {where[0]}{where[1]}"
+        log.info("%s", banner, extra=_console.styled(
+            f"{B}{library}{R}: {self.name!r} {where[0]}{B}{where[1]}{R}"))
+        for line in more:
+            log.info("  %s", line, extra=_console.styled(f"  {line}"))
         if status_port is not None:
             try:
                 self._status = _status.StatusPage(self, status_port)
