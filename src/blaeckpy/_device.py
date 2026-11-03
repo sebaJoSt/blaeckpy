@@ -7,6 +7,7 @@ import select
 import time
 from collections.abc import Callable, Sequence
 from importlib.metadata import version as _version
+from typing import overload
 
 from . import _clock, _commands, _console, _properties, _status, _transport
 from ._clock import TimestampMode
@@ -47,31 +48,32 @@ class _DeviceBase:
 
     # ----- registration -----
 
-    def add_signal(self, name: str, type_or_initial: _TypeOrValue, initial: _Value | None = None, *,
-                   unit: str | None = None, write_at_interval: _Mode | OnChange = ALWAYS,
-                   write_on_change: float | None = None, min_interval_ms: int = 100) -> Signal:
+    def add_signal[T: (bool, int, float, str)](
+            self, name: str, type_or_initial: type[T] | T, initial: T | None = None, *,
+            unit: str | None = None, write_at_interval: _Mode | OnChange = ALWAYS,
+            write_on_change: float | None = None, min_interval_ms: int = 100) -> Signal[T]:
         """A value the device logs: ``add_signal("T", float)``, ``add_signal("T", float, 21.5)``
         or ``add_signal("T", 21.5)``. ``unit`` in Home Assistant's spelling, such as "°C"."""
         name = check_name(name, "signal")
         if any(s.name == name and s.device_id == self._id for s in self._core._signals):
             raise ValueError(f"signal {name!r} exists already")
         type_, value = type_and_value(type_or_initial, initial)
-        signal = Signal(self._core, self._id, name, type_, value, write_at_interval, write_on_change,
-                        min_interval_ms, check_unit(unit))
+        signal: Signal[T] = Signal(self._core, self._id, name, type_, value,  # type: ignore[arg-type]
+                                   write_at_interval, write_on_change, min_interval_ms, check_unit(unit))
         self._core._signals.append(signal)
         return signal
 
     # ----- entities: what a host shows and controls -----
 
-    def add_number_input(self, name: str, type_or_initial: _TypeOrValue, initial: float | None = None,
-                         *, min: float | None = None, max: float | None = None,
+    def add_number_input[T: (int, float)](self, name: str, type_or_initial: type[T] | T,
+                         initial: T | None = None, *, min: float | None = None, max: float | None = None,
                          step: float | None = None, mode: Mode | str | None = None,
                          unit: str | None = None, display_name: str | None = None,
                          icon: str | None = None, device_class: str | None = None,
                          state_class: StateClass | str | None = None,
                          display_precision: int | None = None, category: Category | str = Category.NONE,
                          disabled_by_default: bool = False, force_update: bool = False,
-                         write_on_change: float = 0.0, min_interval_ms: int = 100) -> NumberInput:
+                         write_on_change: float = 0.0, min_interval_ms: int = 100) -> NumberInput[T]:
         """A number a host sets, within ``min`` and ``max`` and on ``step`` if given."""
         name = self._core._host_name(name, "input")
         presentation = Presentation(number=True, unit=unit, display_name=display_name, icon=icon,
@@ -119,13 +121,14 @@ class _DeviceBase:
         return self._core._add_property(TextInput(self._core, self._id, name, initial, max_length=max_length, mode=mode,
                                             presentation=presentation, min_interval_ms=min_interval_ms))
 
-    def add_sensor(self, name: str, source: Signal | _TypeOrValue, initial: _Value | None = None, *,
-                   get: Callable[[], _Value] | None = None, options: Sequence[str] | None = None,
+    def add_sensor[T: (bool, int, float, str)](
+                   self, name: str, source: Signal[T] | type[T] | T, initial: T | None = None, *,
+                   get: Callable[[], T] | None = None, options: Sequence[str] | None = None,
                    unit: str | None = None, display_name: str | None = None, icon: str | None = None,
                    device_class: str | None = None, state_class: StateClass | str | None = None,
                    display_precision: int | None = None, category: Category | str = Category.NONE,
                    disabled_by_default: bool = False, force_update: bool = False,
-                   write_on_change: float = 0.0, min_interval_ms: int = 100) -> Sensor:
+                   write_on_change: float = 0.0, min_interval_ms: int = 100) -> Sensor[T]:
         """A value a host shows: ``add_sensor("T", signal)`` shows a signal's value,
         ``add_sensor("T", float, 21.5)`` or ``add_sensor("T", 21.5)`` holds its own,
         ``add_sensor("T", float, get=fn)`` reads a function, and
@@ -155,10 +158,22 @@ class _DeviceBase:
         self._core._catalog_changed()
         return event
 
+    @overload
+    def add_button(self, name: str, press: Callable[[], None], *,
+                   display_name: str | None = None, icon: str | None = None,
+                   device_class: str | None = None, category: Category | str = Category.NONE,
+                   disabled_by_default: bool = False) -> Button: ...
+
+    @overload
+    def add_button(self, name: str, press: None = None, *,
+                   display_name: str | None = None, icon: str | None = None,
+                   device_class: str | None = None, category: Category | str = Category.NONE,
+                   disabled_by_default: bool = False) -> Callable[[Callable[[], None]], Callable[[], None]]: ...
+
     def add_button(self, name: str, press: Callable[[], None] | None = None, *,
                    display_name: str | None = None, icon: str | None = None,
                    device_class: str | None = None, category: Category | str = Category.NONE,
-                   disabled_by_default: bool = False):
+                   disabled_by_default: bool = False) -> Button | Callable[[Callable[[], None]], Callable[[], None]]:
         """A button a host presses; ``press`` runs with no arguments, parameters are ignored.
         Returns the :class:`Button`. Works as ``@device.add_button("Reset")`` too, which leaves
         the function as it is."""
@@ -204,7 +219,7 @@ class Terminal:
         if t is not None:
             t.terminal(text.encode("utf-8"))
 
-    def print(self, *values, sep: str = " ", end: str = "\n") -> None:
+    def print(self, *values: object, sep: str = " ", end: str = "\n") -> None:
         self.write(sep.join(str(v) for v in values) + end)
 
 
@@ -506,7 +521,7 @@ class Blaeck(_DeviceBase):
         self._connection = _status.describe(self._transport)
         server = getattr(self._transport, "server", None)
         name = server.getsockname() if server is not None else None
-        if name is not None and _status.is_everywhere(name[0]):
+        if server is not None and name is not None and _status.is_everywhere(name[0]):
             # As Flask does: the addresses it can be reached on, not 0.0.0.0 alone.
             lines = [f"listening on all addresses ({name[0]})"] + \
                     [f"  TCP {h}:{name[1]}" for h in _status.reachable_hosts(name[0], server.family)]

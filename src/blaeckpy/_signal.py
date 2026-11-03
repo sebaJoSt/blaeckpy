@@ -72,7 +72,7 @@ def type_and_value(type_or_initial: object, initial: object) -> tuple[type, obje
     return type_, checked(type_, value, "starting value")
 
 
-def checked(type_: type, value: object, what: str = "value") -> object:
+def checked(type_: type, value: object, what: str = "value") -> Any:
     """The value as the type holds it; TypeError or ValueError for what it cannot hold."""
     if type_ is bool:
         if not isinstance(value, bool):
@@ -156,19 +156,19 @@ def changed(type_: type, value: Any, reporting: _Reporting, delta: float) -> boo
     return abs(value - previous) >= delta
 
 
-class Signal:
+class Signal[T: (bool, int, float, str)]:
     """A value the device logs. Set :attr:`value`; the device sends it when it is due."""
 
-    def __init__(self, device, device_id: int, name: str, type_: type, value: object,
+    def __init__(self, device, device_id: int, name: str, type_: type[T], value: T,
                  write_at_interval, write_on_change, min_interval_ms: int, unit: str = "") -> None:
         self._device = device
         self.device_id = device_id
         self.name = name
         self.unit = unit
         self._removed = False
-        self.type = type_
+        self.type: type[T] = type_
         self.dtype = _DTYPES[type_]
-        self._value = value
+        self._value: T = value
         if write_at_interval is not ALWAYS and write_at_interval is not OFF \
                 and not isinstance(write_at_interval, OnChange):
             raise TypeError("write_at_interval is ALWAYS, OFF or OnChange(delta)")
@@ -189,14 +189,14 @@ class Signal:
         return self._reporting
 
     @property
-    def value(self):
+    def value(self) -> T:
         return self._value
 
     @value.setter
-    def value(self, value) -> None:
+    def value(self, value: T) -> None:
         self._value = checked(self.type, value)
 
-    def write(self, value: bool | int | float | str | None = None, timestamp: int | None = None) -> None:
+    def write(self, value: T | None = None, timestamp: int | None = None) -> None:
         """Sends the signal now, set to ``value`` if one is given."""
         if self._removed:
             raise RuntimeError(f"signal {self.name!r} was removed by clear_all_signals()")

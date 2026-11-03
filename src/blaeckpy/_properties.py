@@ -7,6 +7,7 @@ import math
 import re
 from collections.abc import Callable, Sequence
 from enum import StrEnum
+from typing import Any
 
 from ._signal import ANY_CHANGE, Signal, _Reporting, changed, check_delta, check_unit, checked, type_and_value
 from .protocol import frames
@@ -90,7 +91,7 @@ class Presentation:
     """How a host shows an entity. Numbers alone have a unit, state class and precision."""
 
     def __init__(self, *, number: bool, display_name=None, icon=None, device_class=None,
-                 category=Category.NONE, disabled_by_default=False, force_update=False,
+                 category: Category | str = Category.NONE, disabled_by_default=False, force_update=False,
                  unit=None, state_class=None, display_precision=None):
         if not number and (unit is not None or state_class is not None or display_precision is not None):
             raise TypeError("unit, state_class and display_precision are for numbers")
@@ -135,11 +136,12 @@ def _step_decimals(step: float) -> int:
     return 6
 
 
-class Property:
+class Property[T]:
     """An entity a host shows: an input it can also set, or a sensor."""
 
     kind: ValueKind
     writable = False
+    _value: T
 
     def __init__(self, device, device_id: int, name: str, dtype: DType, presentation: Presentation,
                  write_on_change: float, min_interval_ms: int):
@@ -154,11 +156,11 @@ class Property:
         self._on_change: Callable[[], None] | None = None
 
     # The value as it goes out; subclasses say where it lives.
-    def _current(self):
+    def _current(self) -> T:
         return self._value
 
     @property
-    def value(self):
+    def value(self) -> T:
         return self._current()
 
     def _compare_type(self) -> type:
@@ -183,7 +185,7 @@ class Property:
         return READ_ONLY
 
 
-class _Input(Property):
+class _Input[T](Property[T]):
     writable = True
 
     def on_change(self, fn: Callable[[], None]) -> Callable[[], None]:
@@ -193,14 +195,14 @@ class _Input(Property):
         return fn
 
     @property
-    def value(self):
+    def value(self) -> T:
         return self._value
 
     @value.setter
-    def value(self, value) -> None:
+    def value(self, value: T) -> None:
         self._value = self._check(value)
 
-    def _check(self, value):
+    def _check(self, value) -> T:
         raise NotImplementedError
 
     def _accept(self, text: str) -> int:
@@ -212,7 +214,7 @@ class _Input(Property):
         return self._accept(params[0])
 
 
-class NumberInput(_Input):
+class NumberInput[T: (int, float)](_Input[T]):
     kind = ValueKind.NUMBER
 
     def __init__(self, device, device_id, name, type_or_initial, initial, *, min, max, step, mode,
@@ -223,7 +225,7 @@ class NumberInput(_Input):
         self.type = type_
         super().__init__(device, device_id, name, DType.INT64 if type_ is int else DType.DOUBLE,
                          presentation, write_on_change, min_interval_ms)
-        self._value = value
+        self._value = value  # type: ignore[assignment]
         if (min is None) != (max is None):
             raise ValueError("a range has both min and max, or neither")
         if step is not None and min is None:
@@ -239,7 +241,7 @@ class NumberInput(_Input):
         if self.mode not in _NUMBER_MODES:
             raise ValueError(f"a number input's mode is auto, box or slider, not {self.mode}")
 
-    def _bound(self, value, what):
+    def _bound(self, value, what) -> Any:
         if value is None:
             return None
         if self.type is int and (isinstance(value, bool) or not isinstance(value, int)):
@@ -265,7 +267,7 @@ class NumberInput(_Input):
                     else (float(self.min) <= float(whole) <= float(self.max))
                 if not inside:
                     return OUT_OF_RANGE
-            self._value = whole if self.type is int else float(whole)
+            self._value = whole if self.type is int else float(whole)  # type: ignore[assignment]
             return OK
         if self.type is int:
             return NOT_AN_INTEGER
@@ -275,6 +277,7 @@ class NumberInput(_Input):
         if self.min is not None and not self.min <= number <= self.max:
             return OUT_OF_RANGE
         if self.step is not None:
+            assert self.min is not None  # a step needs a range
             steps = (number - self.min) / self.step
             nearest = math.floor(steps + 0.5)
             if abs(steps - nearest) < 1e-3:
@@ -285,11 +288,11 @@ class NumberInput(_Input):
                 if abs(snapped) * scale < 1e15:
                     snapped = math.floor(abs(snapped) * scale + 0.5) / scale * (-1.0 if snapped < 0.0 else 1.0)
                 number = snapped
-        self._value = number
+        self._value = number  # type: ignore[assignment]
         return OK
 
 
-class Switch(_Input):
+class Switch(_Input[bool]):
     kind = ValueKind.BOOL
 
     def __init__(self, device, device_id, name, initial, *, presentation, min_interval_ms):
@@ -330,7 +333,7 @@ def _check_index(options: list[str], index) -> int:
     return index
 
 
-class Select(_Input):
+class Select(_Input[int]):
     kind = ValueKind.ENUM
 
     def __init__(self, device, device_id, name, index, *, options, presentation, min_interval_ms):
@@ -369,7 +372,7 @@ def _check_text(value, max_length: int) -> str:
     return value
 
 
-class TextInput(_Input):
+class TextInput(_Input[str]):
     kind = ValueKind.TEXT
 
     def __init__(self, device, device_id, name, initial, *, max_length, mode, presentation,
@@ -397,7 +400,7 @@ class TextInput(_Input):
         return OK
 
 
-class Sensor(Property):
+class Sensor[T: (bool, int, float, str)](Property[T]):
     """A value a host shows but cannot set: its own, a signal's, or what a function returns."""
 
     def __init__(self, device, device_id, name, source, initial, *, get, options, presentation,
@@ -440,9 +443,9 @@ class Sensor(Property):
         super().__init__(device, device_id, name, dtype,
                          Presentation(number=kind is ValueKind.NUMBER, **presentation),
                          write_on_change, min_interval_ms)
-        self._value = value
+        self._value = value  # type: ignore[assignment]
 
-    def _current(self):
+    def _current(self) -> T:
         """The value as tick() sends it. A get= is read once in each pass of tick(), so the
         value compared is the value sent. One that raises or returns the wrong type is logged
         once, until it reads again, and the last value it gave goes out in its place: like any
@@ -466,24 +469,25 @@ class Sensor(Property):
         self._read_pass = None
         super().write()
 
-    def _read_get(self):
+    def _read_get(self) -> T:
+        assert self._get is not None
         return checked(self.type, self._get(), "value from get=")
 
     @property
-    def value(self):
+    def value(self) -> T:
         # Read by the script itself, a get= that raises raises here.
         if self._get is not None:
             return self._read_get()
         return self._current()
 
     @value.setter
-    def value(self, value) -> None:
+    def value(self, value: T) -> None:
         if self._signal is not None:
             self._signal.value = value
         elif self._get is not None:
             raise AttributeError("a sensor with get= reads its function; it has no value to set")
         elif self.options is not None:
-            self._value = _check_index(self.options, value)
+            self._value = _check_index(self.options, value)  # type: ignore[assignment]
         else:
             self._value = checked(self.type, value)
 

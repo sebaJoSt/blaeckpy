@@ -30,13 +30,17 @@ Homepage = "https://github.com/sebaJoSt/blaeckpy"
 "Source" = "https://github.com/sebaJoSt/blaeckpy"
 
 [project.optional-dependencies]
-test = ["pytest>=8", "mypy>=1.11"]
+test = ["pytest>=8", "mypy>=1.11", "basedpyright"]
 
 [tool.setuptools.package-data]
 blaeckpy = ["py.typed", "static/*"]
 
 [tool.mypy]
 files = ["src"]
+
+[tool.basedpyright]
+typeCheckingMode = "standard"
+enableTypeIgnoreComments = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
