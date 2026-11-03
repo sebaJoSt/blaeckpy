@@ -100,3 +100,20 @@ def test_small_frames_round_trip():
 def test_a_data_frame_needs_its_device_list():
     with pytest.raises(ValueError):
         _decode.decode(frames.data([(0, DType.DOUBLE, 1.0)], schema_hash=0))
+
+
+def test_a_signal_named_twice_in_one_data_frame_is_refused():
+    signals = [_decode.Signal("T", "", DType.FLOAT)]
+    frame = frames.data([(0, DType.FLOAT, 1.0), (0, DType.FLOAT, 2.0)], schema_hash=0)
+    with pytest.raises(ValueError, match="twice"):
+        _decode.decode(frame, signals)
+
+
+def test_a_frame_keeps_its_raw_fields():
+    frame = _decode.decode(frames.event(1, 2))
+    assert frame.fields == b"\x01\x00\x02\x00"
+
+
+def test_a_stream_hands_over_a_data_frame_before_any_device_list_unread():
+    out = _decode.Decoder().feed(frames.data([(0, DType.FLOAT, 1.0)], schema_hash=0))
+    assert out[0].key == frames.Key.DATA and isinstance(out[0].body, _decode.Unknown)

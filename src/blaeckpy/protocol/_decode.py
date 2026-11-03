@@ -154,6 +154,8 @@ def _data(r: _Reader, signals: list[Signal] | None) -> Data:
     values = {}
     while not r.done:
         index = r.u16()
+        if index in values:
+            raise ValueError(f"signal {index} twice in one data frame")
         if signals is None or index >= len(signals):
             raise ValueError(f"signal {index} is not in the last device list")
         values[index] = r.value(signals[index].dtype)
@@ -352,6 +354,8 @@ class Frame:
     key: int
     message_id: int
     body: object
+    #: The frame's fields as sent, unescaped, CRC removed: for checks that compare bytes.
+    fields: bytes = b""
 
 
 @dataclass
@@ -382,11 +386,12 @@ def decode(frame: bytes, signals: list[Signal] | None = None) -> Frame:
         body = _entity_list(r)
     else:
         body = Unknown(opened.fields)
-    return Frame(key, opened.message_id, body)
+    return Frame(key, opened.message_id, body, opened.fields)
 
 
 class Decoder:
-    """Reads a device's byte stream: frames, and the terminal text between them."""
+    """Reads a device's byte stream: frames, and the terminal text between them. A data frame
+    that arrives before any device list is handed over with an :class:`Unknown` body."""
 
     def __init__(self) -> None:
         self._buffer = bytearray()
@@ -418,7 +423,12 @@ class Decoder:
                 break
             frame = bytes(self._buffer[:end + len(envelope.END)])
             del self._buffer[:end + len(envelope.END)]
-            decoded = decode(frame, self.device_list.signals if self.device_list else None)
+            if self.device_list is None and frame[len(envelope.START)] == Key.DATA:
+                # No device list seen yet, so its values can't be read: handed over unread.
+                opened = envelope.open_frame(frame)
+                decoded = Frame(opened.key, opened.message_id, Unknown(opened.fields), opened.fields)
+            else:
+                decoded = decode(frame, self.device_list.signals if self.device_list else None)
             if isinstance(decoded.body, DeviceList):
                 self.device_list = decoded.body
             out.append(decoded)
