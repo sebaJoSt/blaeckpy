@@ -120,6 +120,29 @@ def test_a_raising_callback_is_logged_and_the_host_still_gets_its_answer(caplog)
     assert "bad parameter" in caplog.text
 
 
+def test_a_raising_get_is_logged_once_and_its_last_value_stands_in(caplog):
+    device, port = Blaeck(), Port()
+    readings = [1.5]
+
+    def read():
+        if not readings:
+            raise OSError("sensor gone")
+        return readings.pop()
+
+    sensor = device.add_sensor("T", float, get=read)
+    device.begin(port)
+    with caplog.at_level(logging.ERROR, logger="blaeckpy"):
+        assert ack_reason(device, port, "<BLAECK.ENTITIES_START>") == 0
+        for _ in range(3):
+            device.tick()
+        assert ack_reason(device, port, "<BLAECK.WRITE_ENTITIES>") == 0
+    assert len([r for r in caplog.records if "get= of sensor" in r.getMessage()]) == 1
+    assert sensor._current() == 1.5
+    # Read by the script, it raises.
+    with pytest.raises(OSError):
+        sensor.value
+
+
 def test_the_catch_all_takes_a_command_only_by_returning_true():
     device, port = Blaeck(), Port()
     seen = []

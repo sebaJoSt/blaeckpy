@@ -699,7 +699,7 @@ class Blaeck(_DeviceBase):
     # ----- the entity list, property values and events -----
 
     def _entries(self) -> list[frames.Entry]:
-        entries = [p._entry(p.value) for p in self._properties]
+        entries = [p._entry(p._current()) for p in self._properties]
         entries += [e._entry() for e in self._events]
         entries += [b._entry() for b in self._buttons]
         return entries
@@ -720,7 +720,7 @@ class Blaeck(_DeviceBase):
             return False
         # A host must know the property before a value of it arrives.
         self._flush_catalogs()
-        value = prop.value
+        value = prop._current()
         self._send(frames.property_value(self._properties.index(prop), prop.dtype, value))
         prop._reporting.valid = True
         prop._reporting.baseline = value

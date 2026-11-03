@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import math
 import re
 from collections.abc import Callable, Sequence
@@ -62,6 +63,8 @@ _NUMBER = re.compile(r"[+-]?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?")
 _WHOLE = re.compile(r"[+-]?(0|[1-9][0-9]*)")
 
 INT64_MIN, INT64_MAX = -(2**63), 2**63 - 1
+
+log = logging.getLogger("blaeckpy")
 
 
 def check_host_name(name: object, what: str) -> str:
@@ -397,6 +400,7 @@ class Sensor(Property):
         depends on the kind, which is only known here."""
         self._signal: Signal | None = None
         self._get: Callable[[], object] | None = None
+        self._get_failing = False
         self.options: list[str] | None = None
         value = None
         if options is not None:
@@ -417,7 +421,8 @@ class Sensor(Property):
                 raise TypeError("a sensor with get= takes its type alone: add_sensor(name, float, get=fn)")
             if not callable(get):
                 raise TypeError("get is a function")
-            type_, _ = type_and_value(source, None)
+            # What goes out until get= first reads: the type's empty value.
+            type_, value = type_and_value(source, None)
             self._get = get
             dtype, kind = _kind_for(type_)
         else:
@@ -431,14 +436,31 @@ class Sensor(Property):
         self._value = value
 
     def _current(self):
+        """The value as tick() sends it. A get= that raises or returns the wrong type is logged
+        once, until it reads again, and the last value it gave goes out in its place: like any
+        other function of the script's, it must not stop the device."""
         if self._signal is not None:
             return self._signal.value
         if self._get is not None:
-            return checked(self.type, self._get(), "value from get=")
+            try:
+                self._value = self._read_get()
+                self._get_failing = False
+            except Exception:
+                if not self._get_failing:
+                    self._get_failing = True
+                    log.exception("get= of sensor %r raised inside tick(); its last value stands in",
+                                  self.name)
+            return self._value
         return self._value
+
+    def _read_get(self):
+        return checked(self.type, self._get(), "value from get=")
 
     @property
     def value(self):
+        # Read by the script itself, a get= that raises raises here.
+        if self._get is not None:
+            return self._read_get()
         return self._current()
 
     @value.setter
