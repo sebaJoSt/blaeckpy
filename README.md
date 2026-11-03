@@ -1,9 +1,14 @@
-# blaeckpy
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/sebaJoSt/blaeckpy/main/extras/blaeckpy-dark.svg">
+  <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/sebaJoSt/blaeckpy/main/extras/blaeckpy-light.svg">
+  <img src="https://raw.githubusercontent.com/sebaJoSt/blaeckpy/main/extras/blaeckpy-light.svg" alt="blaeckpy" height="75">
+</picture>
 
-The Python counterpart of the [blaeck](https://github.com/sebaJoSt/blaeck) Arduino library. A
-Python script sends the values it holds over a serial port or TCP, using the
-[blaeck protocol](https://sebajost.github.io/blaeck-protocol/), and a host such as Loggbok
-cannot tell it from a blaeck board.
+---
+
+A Python library for signals, Home Assistant entities and commands over serial or TCP,
+using the [blaeck protocol](https://sebajost.github.io/blaeck-protocol/). Works with hosts such
+as Loggbok.
 
 With blaeckpy, a script can:
 
@@ -11,16 +16,17 @@ With blaeckpy, a script can:
 - **Show up in Home Assistant:** with controls, sensors and events.
 - **Take commands:** text such as `<SwitchLED,1>`.
 
-**Status: in development, not on PyPI yet.** Everything above works, over serial and TCP, and is
-checked byte for byte against blaeck (see [Testing](#testing)). It replaces
-[blaecktcpy](https://github.com/sebaJoSt/blaecktcpy), which stays on PyPI for protocol v1.
+blaeckpy replaces [blaecktcpy](https://github.com/sebaJoSt/blaecktcpy), which stays on PyPI for
+protocol v1.
+
+## Installation
+
+```
+pip install blaeckpy
+```
 
 Python 3.12 or later. blaeckpy itself needs nothing else; a serial port needs
 [pyserial](https://pypi.org/project/pyserial/).
-
-```
-pip install git+https://github.com/sebaJoSt/blaeckpy
-```
 
 ## A first script
 
@@ -90,42 +96,40 @@ The host decides how often data is sent: it sends `<BLAECK.DATA_START>` and
 
 ## What a script declares
 
-The names are blaeck's, in Python style. Everything a script declares on the board it can also
-declare on a sub-device.
+Everything a script declares on the board it can also declare on a sub-device.
 
-| blaeck | blaeckpy | What it is |
-|---|---|---|
-| `addSignal(name, &var)` | `add_signal(name, float)` | A value to log; `.value` |
-| `writeAtInterval`, `writeOnChange` | `write_at_interval=ALWAYS / OFF / OnChange(0.5)`, `write_on_change=0.5`, `min_interval_ms=` | When a signal is sent |
-| `addNumberInput`, `addTextInput`, `addSwitch`, `addSelect` | `add_number_input(name, 20.0, min=, max=, step=)`, `add_text_input`, `add_switch`, `add_select(name, 0, options=[...])` | Controls Home Assistant lets the user operate; `.value`, `@input.on_change` |
-| `addSensor` | `add_sensor(name, signal)`, `add_sensor(name, 21.5)`, `add_sensor(name, float, get=fn)`, `add_sensor(name, 0, options=[...])` | Values Home Assistant shows but the user can't set |
-| `addEvent`, `writeEvent` | `add_event(name, [types])`, `event.write(type)` | Occurrences, such as a doorbell |
-| `addButton` | `add_button(name, fn)`, `@device.add_button(name)` | A press with no value |
-| `onCommand`, `onAnyCommand` | `@device.on_command(name)`, `@device.on_any_command` | Commands no host lists; parameters arrive as text |
-| `addDevice`, `markMissing`, `markPresent`, `writeRestarted` | `add_device(name)`, `mark_missing()`, `mark_present()`, `write_restarted()` | A second board shown as its own device |
-| `withUnit`, `withIcon`, `withDeviceClass`, `config()`, ... | `unit=`, `icon=`, `device_class=`, `category=Category.CONFIG`, ... | How a host shows it |
-| `onDataStart`, `onIntervalStart`, `onEntitiesStart`, ... | `@device.on_data_start`, `@device.on_interval_start`, ... | Following what the host switches on and off |
-| `onConnect`, `onDisconnect` | `@device.on_connect`, `@device.on_disconnect` | TCP connections, with `(client_no, address)` |
-| `Terminal` | `device.terminal.print(...)` | Text for whoever looks into the running device |
-| `setTimestampMode` | `set_timestamp_mode(TimestampMode.MICROS)` | Timestamps in data frames |
-| `clearAllSignals`, `clearAllControls`, `clearAllSensors`, `clearAllEvents`, `clearAllCommands` | `clear_all_signals()`, `clear_all_controls()`, ... | Declaring a new set while running |
+| blaeckpy | What it is |
+|---|---|
+| `add_signal(name, float)` | A value to log; `.value` |
+| `write_at_interval=ALWAYS / OFF / OnChange(0.5)`, `write_on_change=0.5`, `min_interval_ms=` | When a signal is sent |
+| `add_number_input(name, 20.0, min=, max=, step=)`, `add_text_input`, `add_switch`, `add_select(name, 0, options=[...])` | Controls Home Assistant lets the user operate; `.value`, `@input.on_change` |
+| `add_sensor(name, signal)`, `add_sensor(name, 21.5)`, `add_sensor(name, float, get=fn)`, `add_sensor(name, 0, options=[...])` | Values Home Assistant shows but the user can't set |
+| `add_event(name, [types])`, `event.write(type)` | Occurrences, such as a doorbell |
+| `add_button(name, fn)`, `@device.add_button(name)` | A press with no value |
+| `@device.on_command(name)`, `@device.on_any_command` | Commands no host lists; parameters arrive as text |
+| `add_device(name)`, `mark_missing()`, `mark_present()`, `write_restarted()` | A second board shown as its own device |
+| `unit=`, `icon=`, `device_class=`, `category=Category.CONFIG`, ... | How a host shows it |
+| `@device.on_data_start`, `@device.on_interval_start`, ... | Following what the host switches on and off |
+| `@device.on_connect`, `@device.on_disconnect` | TCP connections, with `(client_no, address)` |
+| `device.terminal.print(...)` | Text for whoever looks into the running device |
+| `set_timestamp_mode(TimestampMode.MICROS)` | Timestamps in data frames |
+| `clear_all_signals()`, `clear_all_controls()`, ... | Declaring a new set while running |
 
-A few things are Python's own:
+A few things to know:
 
 - **Errors at registration raise.** A bad name, a range with `min` above `max` or an option list
   with a blank entry raises `ValueError` or `TypeError` where it was written, instead of being
   reported on a debug stream.
 - **A callback that raises doesn't stop the device.** The exception is logged with its traceback
-  on the `blaeckpy` logger, `tick()` goes on, and the host gets the answer blaeck would send.
+  on the `blaeckpy` logger, `tick()` goes on, and the host still gets its answer.
 - **One thread.** A device and what it made are used from the thread that calls `tick()`. To
   feed values from another thread, hand them over, with a `queue.Queue` say, and set them in the
   loop.
-- **Time is in seconds** unless a name says otherwise: `tick(timeout=0.1)`, but blaeck's
-  millisecond values keep their unit and say so, as in `min_interval_ms=1000`.
+- **Time is in seconds** unless a name says otherwise: `tick(timeout=0.1)`, but
+  `min_interval_ms=1000`.
 - **The device list names blaeckpy** and its own version, so Loggbok and error reports show which
   library a device runs.
-- **A command may be up to 1023 characters,** where blaeck's default buffer takes 127: room for a
-  255-byte text, the most Home Assistant holds, even with every byte percent-encoded. The device
+- **A command may be up to 1023 characters:** room for a 255-byte text, the most Home Assistant holds, even with every byte percent-encoded. The device
   list tells a host the limit.
 
 ## Status page and terminal output
@@ -156,20 +160,19 @@ device.begin(server, status_port=None)   # no status page
 
 ## Examples
 
-The examples are in [`examples/`](examples). Each one is a single file that listens on TCP port
-2323; a comment shows the line to use for serial instead. Run one and point Loggbok at it. They
-are ports of blaeck's examples of the same names.
+The examples are in [`examples/`](https://github.com/sebaJoSt/blaeckpy/tree/main/examples). Each one is a single file that listens on TCP port
+2323; a comment shows the line to use for serial instead. Run one and point Loggbok at it.
 
 | Example | What it teaches |
 |---|---|
-| [basic.py](examples/basic.py) | The smallest script that logs two values |
-| [signals.py](examples/signals.py) | Numeric, boolean and text signals, with units |
-| [commands.py](examples/commands.py) | Plain commands, and a function that sees every command |
-| [controls.py](examples/controls.py) | A number, text, switch, select and buttons |
-| [sensors.py](examples/sensors.py) | A number, bool, function, index and text sensor |
-| [events.py](examples/events.py) | Declaring and reporting occurrences |
-| [write_modes.py](examples/write_modes.py) | Interval, on-change and explicit signal writes |
-| [sub_devices.py](examples/sub_devices.py) | A second device shown below the board, going missing and restarting |
+| [basic.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/basic.py) | The smallest script that logs two values |
+| [signals.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/signals.py) | Numeric, boolean and text signals, with units |
+| [commands.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/commands.py) | Plain commands, and a function that sees every command |
+| [controls.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/controls.py) | A number, text, switch, select and buttons |
+| [sensors.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/sensors.py) | A number, bool, function, index and text sensor |
+| [events.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/events.py) | Declaring and reporting occurrences |
+| [write_modes.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/write_modes.py) | Interval, on-change and explicit signal writes |
+| [sub_devices.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/sub_devices.py) | A second device shown below the board, going missing and restarting |
 
 ## Testing
 
@@ -185,5 +188,5 @@ pytest
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). The status page uses [Pico CSS](https://picocss.com), MIT, see
-[pico-LICENSE.md](src/blaeckpy/static/pico-LICENSE.md).
+MIT, see [LICENSE](https://github.com/sebaJoSt/blaeckpy/blob/main/LICENSE). The status page uses [Pico CSS](https://picocss.com), MIT, see
+[pico-LICENSE.md](https://github.com/sebaJoSt/blaeckpy/blob/main/src/blaeckpy/static/pico-LICENSE.md).

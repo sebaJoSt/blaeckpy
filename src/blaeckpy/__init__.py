@@ -1,9 +1,5 @@
-"""blaeckpy: the Python counterpart of the blaeck Arduino library.
-
-Speaks protocol v2 as blaeck does, so a host such as Loggbok cannot tell the two apart.
-In development: signals, data, inputs, sensors, selects, events, buttons, commands and
-sub-devices work, over a serial port or TCP.
-"""
+"""A Python library for signals, Home Assistant entities and commands over serial or TCP, using
+the blaeck protocol."""
 
 from importlib.metadata import version as _version
 
