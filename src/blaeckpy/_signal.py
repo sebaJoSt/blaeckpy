@@ -194,7 +194,7 @@ class Signal:
     def value(self, value) -> None:
         self._value = checked(self.type, value)
 
-    def write(self, value=None, timestamp: int | None = None) -> None:
+    def write(self, value: bool | int | float | str | None = None, timestamp: int | None = None) -> None:
         """Sends the signal now, set to ``value`` if one is given."""
         if self._removed:
             raise RuntimeError(f"signal {self.name!r} was removed by clear_all_signals()")

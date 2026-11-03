@@ -5,14 +5,15 @@ from __future__ import annotations
 import logging
 import select
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from importlib.metadata import version as _version
 
 from . import _clock, _commands, _properties, _transport
 from ._clock import TimestampMode
 from ._events import Button, Event
-from ._properties import NumberInput, Presentation, Select, Sensor, Switch, TextInput, check_host_name
-from ._signal import ALWAYS, OnChange, Signal, check_name, check_unit, changed, type_and_value
+from ._properties import (Category, Mode, NumberInput, Presentation, Select, Sensor, StateClass, Switch,
+                          TextInput, check_host_name)
+from ._signal import ALWAYS, OnChange, Signal, _Mode, check_name, check_unit, changed, type_and_value
 from .protocol import frames
 from .protocol.schema_hash import schema_hash
 
@@ -28,6 +29,9 @@ _ACK_TRUNCATED = 7
 
 log = logging.getLogger("blaeckpy")
 
+_Value = bool | int | float | str
+_TypeOrValue = type | bool | int | float | str
+
 
 class _DeviceBase:
     """What the board and each sub-device declare: signals, inputs, sensors, events, buttons and
@@ -39,9 +43,9 @@ class _DeviceBase:
 
     # ----- registration -----
 
-    def add_signal(self, name: str, type_or_initial, initial=None, *, unit: str | None = None,
-                   write_at_interval=ALWAYS, write_on_change: float | None = None,
-                   min_interval_ms: int = 100) -> Signal:
+    def add_signal(self, name: str, type_or_initial: _TypeOrValue, initial: _Value | None = None, *,
+                   unit: str | None = None, write_at_interval: _Mode | OnChange = ALWAYS,
+                   write_on_change: float | None = None, min_interval_ms: int = 100) -> Signal:
         """A value the device logs: ``add_signal("T", float)``, ``add_signal("T", float, 21.5)``
         or ``add_signal("T", 21.5)``. ``unit`` in Home Assistant's spelling, such as "°C"."""
         name = check_name(name, "signal")
@@ -55,10 +59,14 @@ class _DeviceBase:
 
     # ----- entities: what a host shows and controls -----
 
-    def add_number_input(self, name: str, type_or_initial, initial=None, *, min=None, max=None,
-                         step=None, mode=None, unit=None, display_name=None, icon=None,
-                         device_class=None, state_class=None, display_precision=None,
-                         category="none", disabled_by_default=False, force_update=False,
+    def add_number_input(self, name: str, type_or_initial: _TypeOrValue, initial: float | None = None,
+                         *, min: float | None = None, max: float | None = None,
+                         step: float | None = None, mode: Mode | str | None = None,
+                         unit: str | None = None, display_name: str | None = None,
+                         icon: str | None = None, device_class: str | None = None,
+                         state_class: StateClass | str | None = None,
+                         display_precision: int | None = None, category: Category | str = Category.NONE,
+                         disabled_by_default: bool = False, force_update: bool = False,
                          write_on_change: float = 0.0, min_interval_ms: int = 100) -> NumberInput:
         """A number a host sets, within ``min`` and ``max`` and on ``step`` if given."""
         name = self._core._host_name(name, "input")
@@ -71,9 +79,10 @@ class _DeviceBase:
                                               write_on_change=write_on_change,
                                               min_interval_ms=min_interval_ms))
 
-    def add_switch(self, name: str, initial: bool = False, *, display_name=None, icon=None,
-                   device_class=None, category="none", disabled_by_default=False,
-                   force_update=False, min_interval_ms: int = 100) -> Switch:
+    def add_switch(self, name: str, initial: bool = False, *, display_name: str | None = None,
+                   icon: str | None = None, device_class: str | None = None,
+                   category: Category | str = Category.NONE, disabled_by_default: bool = False,
+                   force_update: bool = False, min_interval_ms: int = 100) -> Switch:
         name = self._core._host_name(name, "switch")
         presentation = Presentation(number=False, display_name=display_name, icon=icon,
                                     device_class=device_class, category=category,
@@ -81,9 +90,11 @@ class _DeviceBase:
         return self._core._add_property(Switch(self._core, self._id, name, initial, presentation=presentation,
                                          min_interval_ms=min_interval_ms))
 
-    def add_select(self, name: str, index: int = 0, *, options, display_name=None, icon=None,
-                   device_class=None, category="none", disabled_by_default=False,
-                   force_update=False, min_interval_ms: int = 100) -> Select:
+    def add_select(self, name: str, index: int = 0, *, options: Sequence[str],
+                   display_name: str | None = None, icon: str | None = None,
+                   device_class: str | None = None, category: Category | str = Category.NONE,
+                   disabled_by_default: bool = False, force_update: bool = False,
+                   min_interval_ms: int = 100) -> Select:
         """One of ``options``, held as its index; a host sends the index or the option's name."""
         name = self._core._host_name(name, "select")
         presentation = Presentation(number=False, display_name=display_name, icon=icon,
@@ -92,10 +103,11 @@ class _DeviceBase:
         return self._core._add_property(Select(self._core, self._id, name, index, options=options,
                                          presentation=presentation, min_interval_ms=min_interval_ms))
 
-    def add_text_input(self, name: str, initial: str = "", *, max_length: int = 255, mode=None,
-                       display_name=None, icon=None, device_class=None, category="none",
-                       disabled_by_default=False, force_update=False,
-                       min_interval_ms: int = 100) -> TextInput:
+    def add_text_input(self, name: str, initial: str = "", *, max_length: int = 255,
+                       mode: Mode | str | None = None, display_name: str | None = None,
+                       icon: str | None = None, device_class: str | None = None,
+                       category: Category | str = Category.NONE, disabled_by_default: bool = False,
+                       force_update: bool = False, min_interval_ms: int = 100) -> TextInput:
         name = self._core._host_name(name, "text input")
         presentation = Presentation(number=False, display_name=display_name, icon=icon,
                                     device_class=device_class, category=category,
@@ -103,11 +115,13 @@ class _DeviceBase:
         return self._core._add_property(TextInput(self._core, self._id, name, initial, max_length=max_length, mode=mode,
                                             presentation=presentation, min_interval_ms=min_interval_ms))
 
-    def add_sensor(self, name: str, source, initial=None, *, get=None, options=None, unit=None,
-                   display_name=None, icon=None, device_class=None, state_class=None,
-                   display_precision=None, category="none", disabled_by_default=False,
-                   force_update=False, write_on_change: float = 0.0,
-                   min_interval_ms: int = 100) -> Sensor:
+    def add_sensor(self, name: str, source: Signal | _TypeOrValue, initial: _Value | None = None, *,
+                   get: Callable[[], _Value] | None = None, options: Sequence[str] | None = None,
+                   unit: str | None = None, display_name: str | None = None, icon: str | None = None,
+                   device_class: str | None = None, state_class: StateClass | str | None = None,
+                   display_precision: int | None = None, category: Category | str = Category.NONE,
+                   disabled_by_default: bool = False, force_update: bool = False,
+                   write_on_change: float = 0.0, min_interval_ms: int = 100) -> Sensor:
         """A value a host shows: ``add_sensor("T", signal)`` shows a signal's value,
         ``add_sensor("T", float, 21.5)`` or ``add_sensor("T", 21.5)`` holds its own,
         ``add_sensor("T", float, get=fn)`` reads a function, and
@@ -122,8 +136,9 @@ class _DeviceBase:
                                          presentation=presentation, write_on_change=write_on_change,
                                          min_interval_ms=min_interval_ms))
 
-    def add_event(self, name: str, types, *, display_name=None, icon=None, device_class=None,
-                  category="none", disabled_by_default=False) -> Event:
+    def add_event(self, name: str, types: Sequence[str], *, display_name: str | None = None,
+                  icon: str | None = None, device_class: str | None = None,
+                  category: Category | str = Category.NONE, disabled_by_default: bool = False) -> Event:
         """A moment the device reports, of one of ``types``; ``event.write(type)`` reports it."""
         name = check_name(name, "event")
         if any(e.name == name and e.device_id == self._id for e in self._core._events):
@@ -136,8 +151,10 @@ class _DeviceBase:
         self._core._catalog_changed()
         return event
 
-    def add_button(self, name: str, press: Callable[[], None] | None = None, *, display_name=None,
-                   icon=None, device_class=None, category="none", disabled_by_default=False):
+    def add_button(self, name: str, press: Callable[[], None] | None = None, *,
+                   display_name: str | None = None, icon: str | None = None,
+                   device_class: str | None = None, category: Category | str = Category.NONE,
+                   disabled_by_default: bool = False):
         """A button a host presses; ``press`` runs with no arguments, parameters are ignored.
         Returns the :class:`Button`. Works as ``@device.add_button("Reset")`` too, which leaves
         the function as it is."""
@@ -159,7 +176,7 @@ class _DeviceBase:
             return decorate
         return register(press)
 
-    def on_command(self, name: str, handler: Callable | None = None):
+    def on_command(self, name: str, handler: Callable[..., object] | None = None):
         """A command a host sends by name and no host lists: ``handler(*params)`` runs with its
         parameters as text. Works as ``@device.on_command("MOTOR")`` or as a plain call."""
         def register(fn):
@@ -402,7 +419,7 @@ class Blaeck(_DeviceBase):
             self._properties[:] = kept
             self._catalog_changed()
 
-    def on_any_command(self, fn: Callable):
+    def on_any_command[F: Callable](self, fn: F) -> F:
         """Sees every command, after its own function: ``fn(command, *params)``. Its answer
         counts only where nothing took the command: True answers OK, False or None UNKNOWN."""
         self._any_command = fn
@@ -410,30 +427,30 @@ class Blaeck(_DeviceBase):
 
     # ----- callbacks: each works as a decorator or a plain call -----
 
-    def _register(self, key: str, fn: Callable) -> Callable:
+    def _register[F: Callable](self, key: str, fn: F) -> F:
         self._callbacks[key] = fn
         return fn
 
-    def on_before_write(self, fn):
+    def on_before_write[F: Callable](self, fn: F) -> F:
         self._before_write = fn
         return fn
 
-    def on_data_start(self, fn):
+    def on_data_start[F: Callable](self, fn: F) -> F:
         return self._register("data_start", fn)
 
-    def on_data_stop(self, fn):
+    def on_data_stop[F: Callable](self, fn: F) -> F:
         return self._register("data_stop", fn)
 
-    def on_interval_start(self, fn):
+    def on_interval_start[F: Callable](self, fn: F) -> F:
         return self._register("interval_start", fn)
 
-    def on_interval_stop(self, fn):
+    def on_interval_stop[F: Callable](self, fn: F) -> F:
         return self._register("interval_stop", fn)
 
-    def on_entities_start(self, fn):
+    def on_entities_start[F: Callable](self, fn: F) -> F:
         return self._register("entities_start", fn)
 
-    def on_entities_stop(self, fn):
+    def on_entities_stop[F: Callable](self, fn: F) -> F:
         return self._register("entities_stop", fn)
 
     def _call(self, key: str, *args) -> None:
@@ -452,7 +469,7 @@ class Blaeck(_DeviceBase):
 
     # ----- transport and loop -----
 
-    def begin(self, transport, *, max_clients: int | None = None) -> None:
+    def begin(self, transport: object, *, max_clients: int | None = None) -> None:
         """Starts using a serial port or a listening TCP socket the script opened. Again after
         close(), with a port the script opened anew - once a serial port is lost, say.
 
@@ -497,12 +514,12 @@ class Blaeck(_DeviceBase):
             self._call("entities_stop")
             self._entities_stopped = True
 
-    def on_connect(self, fn):
+    def on_connect[F: Callable](self, fn: F) -> F:
         """``fn(client_no, address)`` when a TCP connection opens: its slot, from 0, and the
         peer's ``(host, port)``."""
         return self._register("connect", fn)
 
-    def on_disconnect(self, fn):
+    def on_disconnect[F: Callable](self, fn: F) -> F:
         """``fn(client_no, address)`` when a TCP connection closes or is replaced as host."""
         return self._register("disconnect", fn)
 
