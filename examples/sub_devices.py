@@ -1,10 +1,11 @@
 """A second device shown below the board: a pump controller with its own signals, a speed input
-and an alarm, as blaeck's SubDevices/MainBoard shows a second board polled over a UART.
+and an alarm. A host lists it as a device of its own, though its data goes over the board's
+connection.
 
-A port of that example, with the pump simulated in this script instead of polled. Watering
-raises the humidity and cools the air a little as it evaporates. Every 60 s the pump goes
-missing for 10 s, and when it comes back it reports a restart, so a host can be seen dealing
-with both.
+The pump is simulated here; a real one would be read in the loop, over serial or Modbus say,
+and its readings set on its signals. Watering raises the humidity and cools the air a little
+as it evaporates. Every 60 s the pump goes missing for 10 s, and when it comes back it reports
+a restart, so a host can be seen dealing with both.
 """
 
 import math

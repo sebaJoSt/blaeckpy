@@ -2,7 +2,7 @@
 renders them. An event is an occurrence, not a state: it carries no value and nothing to switch
 off again, which is what separates it from a bool sensor.
 
-A port of blaeck's Events example. Every 5 s the next event in the list is reported:
+Every 5 s the next event in the list is reported:
 
     Doorbell    device class doorbell, which Home Assistant expects with a "ring" type
     Button      device class button, using Home Assistant's own names for press and hold
@@ -22,6 +22,9 @@ HAS_OVERHEAT_SENSOR = True
 device = Blaeck("Events", fw_version="1.0")
 uptime = device.add_signal("Uptime", int, unit="s")
 event_count = device.add_signal("EventCount", int)
+device.add_sensor("Uptime", uptime, unit="s", device_class="duration", write_on_change=0,
+                  min_interval_ms=10000)
+device.add_sensor("EventCount", event_count)
 doorbell = device.add_event("Doorbell", ["ring"], icon="mdi:doorbell", device_class="doorbell")
 button = device.add_event("Button", ["press_start", "press_end", "long_press_start",
                                      "long_press_end"],

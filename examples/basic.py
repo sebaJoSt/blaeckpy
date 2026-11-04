@@ -1,6 +1,6 @@
 """Two numbers, registered as signals and sent at the interval a host requests.
 
-A port of blaeck's Basic example. The host selects the logging interval.
+The host selects the logging interval.
 """
 
 import random

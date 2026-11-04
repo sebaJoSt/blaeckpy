@@ -7,9 +7,8 @@
     <Reset>              button   back to 21 °C and Auto
     <Boost>              button   2 °C more, up to 30 °C
 
-A port of blaeck's Controls example. Each value is checked, stored, acknowledged and sent back;
-the functions given to on_change run after it is stored. A simulated room temperature follows
-the setpoint while the heater is on.
+Each value is checked, stored, acknowledged and sent back; the functions given to on_change run
+after it is stored. A simulated room temperature follows the setpoint while the heater is on.
 """
 
 import socket

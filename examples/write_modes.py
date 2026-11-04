@@ -5,8 +5,7 @@
     OnChange            as soon as it changes by at least 0.01; needs no interval
     Explicit            .write() sends every value
 
-A port of blaeck's WriteModes example. The value is a 12-second sine wave around 1.8 V, in a
-36-second pattern:
+The value is a 12-second sine wave around 1.8 V, in a 36-second pattern:
 
     0-8 s    amplitude 0.8, with two short spikes at 5 and 6 s, peaking near 5 V
     8-12 s   fades out

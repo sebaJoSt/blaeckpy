@@ -2,8 +2,7 @@
 on_command() handles it and decides what the parameters mean. Commands are not entities, so
 Home Assistant shows no control for them; see controls.py for those.
 
-A port of blaeck's Commands example. Type these into a TCP terminal (telnet), or send them
-from Loggbok:
+Type these into a TCP terminal (telnet), or send them from Loggbok:
 
     <SwitchLED,1>      the "LED" goes on; 0, ON and OFF work too
     <SwitchLED,>       an empty parameter: the LED goes off

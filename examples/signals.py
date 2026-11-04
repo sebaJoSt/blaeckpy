@@ -1,8 +1,8 @@
 """Numbers, a bool and text, sampled and logged on the interval the host asks for.
 
-A port of blaeck's Signals example. Set a signal's value and tick() sends it when a frame is
-due; no write() call is needed. A signal is a name, a type and optionally a unit: it becomes a
-column in the log. How a dashboard shows a value belongs to a sensor; see sensors.py.
+Set a signal's value and tick() sends it when a frame is due; no write() call is needed. A signal
+is a name, a type and optionally a unit: it becomes a column in the log. How a dashboard shows a
+value belongs to a sensor; see sensors.py.
 
     Temperature      a float, in degrees Celsius
     DoorOpen         a bool, logged as 0 or 1
