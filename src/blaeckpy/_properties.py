@@ -116,6 +116,16 @@ _NUMBER_ONLY = ("unit", "state_class", "display_precision")
 class Presentation:
     """How a host shows an entity. Numbers alone have a unit, state class and precision."""
 
+    display_name: str | None
+    icon: str | None
+    device_class: str | None
+    category: Category
+    disabled_by_default: bool
+    force_update: bool
+    unit: str | None
+    state_class: StateClass | None
+    display_precision: int | None
+
     def __init__(self, *, number: bool, display_name=None, icon=None, device_class=None,
                  category: Category | str = Category.NONE, disabled_by_default=False, force_update=False,
                  unit=None, state_class=None, display_precision=None):
@@ -380,9 +390,10 @@ class NumberInput[T: (int, float)](_Input[T]):
             whole = _parse_whole(text)
             if whole is None:
                 return OUT_OF_RANGE
-            if self.min is not None:
-                inside = (self.min <= whole <= self.max) if self.type is int \
-                    else (float(self.min) <= float(whole) <= float(self.max))
+            low, high = self._min, self._max
+            if low is not None and high is not None:
+                inside = (low <= whole <= high) if self.type is int \
+                    else (float(low) <= float(whole) <= float(high))
                 if not inside:
                     return OUT_OF_RANGE
             self._value = whole if self.type is int else float(whole)  # type: ignore[assignment]
@@ -392,16 +403,17 @@ class NumberInput[T: (int, float)](_Input[T]):
         number = float(text)
         if math.isinf(number):
             return OUT_OF_RANGE
-        if self.min is not None and not self.min <= number <= self.max:
+        low, high, step = self._min, self._max, self._step
+        if low is not None and high is not None and not low <= number <= high:
             return OUT_OF_RANGE
-        if self.step is not None:
-            assert self.min is not None  # a step needs a range
-            steps = (number - self.min) / self.step
+        if step is not None:
+            assert low is not None  # a step needs a range
+            steps = (number - low) / step
             nearest = math.floor(steps + 0.5)
             if abs(steps - nearest) < 1e-3:
-                snapped = self.min + nearest * self.step
+                snapped = float(low + nearest * step)
                 scale = 1.0
-                for _ in range(_step_decimals(self.step)):
+                for _ in range(_step_decimals(step)):
                     scale *= 10.0
                 if abs(snapped) * scale < 1e15:
                     snapped = math.floor(abs(snapped) * scale + 0.5) / scale * (-1.0 if snapped < 0.0 else 1.0)

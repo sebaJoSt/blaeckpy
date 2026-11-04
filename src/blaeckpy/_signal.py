@@ -160,7 +160,7 @@ class Signal[T: (bool, int, float, str)]:
     """A value the device logs. Set :attr:`value`; the device sends it when it is due."""
 
     def __init__(self, device, device_id: int, name: str, type_: type[T], value: T,
-                 write_at_interval, write_on_change, min_interval_ms: int, unit: str = "") -> None:
+                 write_at_interval, write_on_change, min_interval_ms: int, unit: str | None = "") -> None:
         self._device = device
         self.device_id = device_id
         self.name = name
