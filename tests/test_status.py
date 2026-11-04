@@ -351,3 +351,26 @@ def test_a_browser_going_away_prints_nothing_and_another_error_does(server):
     finally:
         device.close()
     assert "a real one" in stderr.getvalue()
+
+
+def test_a_password_input_is_hidden_on_the_page(server, monkeypatch):
+    monkeypatch.setattr(_status, "REFRESH", 0)
+    device = Blaeck("Bench")
+    key = device.add_text_input("ApiKey", "s3cret", mode="password")
+    empty = device.add_text_input("Pin", mode="password")
+    note = device.add_text_input("Note", "plain")
+    device.begin(server, status_port=0)
+    try:
+        def page():
+            return {e["name"]: e["value"] for e in api(device)["devices"][0]["entities"]}
+
+        device.tick()
+        assert page() == {"ApiKey": "••••••••", "Pin": "", "Note": "plain"}
+        key.value = "longer than eight bytes"
+        device.tick()
+        assert page()["ApiKey"] == "••••••••"  # The same length whatever it holds.
+        raw = get(device._status.url + "/api")[1] + get(device._status.url + "/")[1]
+        assert b"s3cret" not in raw and b"longer than" not in raw
+    finally:
+        device.close()
+    assert key.value == "longer than eight bytes" and empty.value == "" and note.value == "plain"

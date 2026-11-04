@@ -30,6 +30,9 @@ REFRESH = 0.5
 VIEWING = 3.0
 
 _KINDS = {"NumberInput": "Number", "TextInput": "Text"}
+# What a password input shows: anyone who can reach the page can read it, and its length is the
+# password's own business too.
+_HIDDEN = "••••••••"
 
 
 def _text(value) -> str:
@@ -58,6 +61,8 @@ def _entity(prop, viewing: bool) -> dict:
         value = prop._current()
     else:
         value = prop._value
+    if getattr(prop, "mode", None) == "password" and value:
+        value = _HIDDEN
     if options is not None and isinstance(value, int) and 0 <= value < len(options):
         value = options[value]
     entry["value"] = _text(value)

@@ -154,7 +154,7 @@ internet. It runs on port 8080, or on a free port if 8080 is taken, and the term
 which. On TCP it listens on the same address as the device; on serial, on every interface, so
 the page of a headless computer such as a Raspberry Pi can be opened from another. The page only
 shows; it changes nothing on the device. A sensor's `get=` is read for the page only while the
-page is open.
+page is open, and a password input shows as `••••••••`.
 
 ```python
 device.begin(server, status_port=8081)   # another port
