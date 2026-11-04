@@ -330,3 +330,24 @@ def test_the_level_is_set_on_the_logger(monkeypatch):
         finally:
             log.setLevel(logging.INFO)
     assert stderr.getvalue() == "two\n"
+
+
+def test_a_browser_going_away_prints_nothing_and_another_error_does(server):
+    device = Blaeck("Bench")
+    device.begin(server, status_port=0)
+    stderr = io.StringIO()
+    try:
+        with contextlib.redirect_stderr(stderr):
+            for error in (BrokenPipeError(), ConnectionResetError(), ConnectionAbortedError()):
+                try:
+                    raise error
+                except OSError:
+                    device._status._server.handle_error(None, ("127.0.0.1", 1))
+            assert stderr.getvalue() == ""
+            try:
+                raise ValueError("a real one")
+            except ValueError:
+                device._status._server.handle_error(None, ("127.0.0.1", 1))
+    finally:
+        device.close()
+    assert "a real one" in stderr.getvalue()

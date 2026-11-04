@@ -194,6 +194,11 @@ class _Server(ThreadingHTTPServer):
     # On Windows, SO_REUSEADDR would let a second program take a port in use.
     allow_reuse_address = sys.platform != "win32"
 
+    def handle_error(self, request, client_address) -> None:
+        # A browser reloading or closing the page mid-reply is no error.
+        if not isinstance(sys.exc_info()[1], ConnectionError):
+            super().handle_error(request, client_address)
+
 
 def _handler(status: "StatusPage"):
     class Handler(BaseHTTPRequestHandler):
@@ -278,9 +283,9 @@ class StatusPage:
                                         name="blaeckpy status page", daemon=True)
         self._thread.start()
 
-    def refresh(self, device, force: bool = False) -> None:
+    def refresh(self, device) -> None:
         now = time.monotonic()
-        if force or now - self._taken >= REFRESH:
+        if now - self._taken >= REFRESH:
             self._taken = now
             # One assignment: the server thread sees the old snapshot or the new, never a mix.
             self.data = snapshot(device, self.asked is not None and now - self.asked < VIEWING)
