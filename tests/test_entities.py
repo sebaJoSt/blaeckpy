@@ -1,6 +1,7 @@
 """Rules for inputs, sensors, events, buttons and commands that the golden scenarios cannot show."""
 
 import logging
+import math
 import re
 
 import pytest
@@ -545,3 +546,80 @@ def test_a_signals_policies_and_unit_change_while_running():
     with pytest.raises(TypeError):
         flow.write_at_interval = "OFF"
 
+
+
+@pytest.mark.parametrize("bounds", [dict(min=0.0, max=math.inf), dict(min=-math.inf, max=0.0),
+                                    dict(min=0.0, max=1.0, step=math.inf)])
+def test_a_float_range_and_step_are_finite(bounds):
+    with pytest.raises(ValueError):
+        Blaeck().add_number_input("N", 0.0, **bounds)
+
+
+def test_an_option_with_a_null_byte_is_refused_when_declared():
+    with pytest.raises(ValueError):
+        Blaeck().add_select("Mode", options=["Off", "O\x00n"])
+
+
+def test_on_change_may_clear_the_controls_it_belongs_to():
+    device, port = Blaeck(), Port()
+    device.add_switch("Heater").on_change(device.clear_all_controls)
+    device.begin(port)
+    assert ack_reason(device, port, "<BLAECK.ENTITIES_START><Heater,1>") == 0
+    device.tick()
+    assert device._properties == []
+
+
+def test_a_huge_interval_is_capped_as_strtoul_caps_it():
+    device, port = Blaeck(), Port()
+    device.add_signal("S", 1.0)
+    device.begin(port)
+    port.incoming += b"<BLAECK.INTERVAL_START," + b"9" * 400 + b">"
+    device.tick(timeout=0.01)
+    assert device._interval_ms == 0xFFFFFFFF
+
+
+def test_after_close_on_before_write_no_longer_runs():
+    device, port = Blaeck(), Port()
+    calls = []
+    device.add_signal("S", 1.0)
+    device.on_before_write(lambda: calls.append(1))
+    device.begin(port)
+    port.incoming += b"<BLAECK.DATA_START><BLAECK.INTERVAL_START,0>"
+    device.tick()
+    device.tick()
+    assert calls
+    device.close()
+    calls.clear()
+    device.tick()
+    device.write_all()
+    assert calls == []
+
+
+class TrickledPort(Port):
+    """Takes at most 3 bytes a write, and none while stalled."""
+    stalled = False
+
+    def write(self, data):
+        if self.stalled:
+            return 0
+        self.outgoing += data[:3]
+        return min(3, len(data))
+
+
+def test_a_frame_the_port_takes_in_parts_goes_out_whole_and_a_stalled_one_is_sent_again(monkeypatch):
+    from blaeckpy import _transport
+    monkeypatch.setattr(_transport, "_SEND_TIMEOUT", 0.01)
+    device, port = Blaeck(), TrickledPort()
+    speed = device.add_signal("Speed", 1.0, write_on_change=0.0, min_interval_ms=0)
+    device.begin(port)
+    port.incoming += b"<BLAECK.GET_DEVICES><BLAECK.DATA_START>"
+    device.tick()
+    device.tick()
+    assert [f.values for f in data_frames(port)] == [{0: 1.0}]
+
+    port.stalled = True
+    speed.value = 2.0
+    device.tick()
+    port.stalled = False
+    device.tick()
+    assert [f.values for f in data_frames(port)][-1] == {0: 2.0}

@@ -374,7 +374,10 @@ class NumberInput[T: (int, float)](_Input[T]):
             return None
         if self.type is int and (isinstance(value, bool) or not isinstance(value, int)):
             raise TypeError(f"{what} of an int input is a whole number")
-        return checked(self.type, value, what)
+        value = checked(self.type, value, what)
+        if not math.isfinite(value):
+            raise ValueError(f"{what} is a finite number")
+        return value
 
     def _check(self, value):
         return checked(self.type, value)

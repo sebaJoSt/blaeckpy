@@ -138,6 +138,8 @@ def check_listed(items: Sequence[str], what: str) -> None:
             raise ValueError(f"a blank {what}")
         if item != item.strip(TRIM):
             raise ValueError(f"{what} {item!r} has leading or trailing spaces")
+        if "\x00" in item:
+            raise ValueError(f"{what} {item!r} holds a null byte, which would end it early")
 
 
 def text_value(text: str) -> bytes:

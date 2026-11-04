@@ -7,12 +7,15 @@ what command came in next and from whom, and where does terminal text go.
 
 from __future__ import annotations
 
+import logging
 import select
 import socket
 import sys
+import time
 
 from ._commands import Receiver
 
+log = logging.getLogger("blaeckpy")
 # How long a write to a host or terminal may take before it counts as failed.
 _SEND_TIMEOUT = 2.0
 
@@ -43,11 +46,33 @@ class StreamTransport:
     def builtin_received(self) -> None:
         pass
 
-    def send(self, data: bytes) -> None:
-        self.port.write(data)
+    def send(self, data: bytes) -> bool:
+        return self._write(data)
 
     def terminal(self, data: bytes) -> None:
-        self.port.write(data)
+        self._write(data)
+
+    def _write(self, data: bytes) -> bool:
+        """Writes all of ``data``. A port may take only part of it; the rest follows, for up to
+        _SEND_TIMEOUT while the port takes nothing. False if the port never took it all."""
+        stalled_since = None
+        while data:
+            n = self.port.write(data)
+            if n is None:  # a port that doesn't count took it all
+                return True
+            if n > 0:
+                data = data[n:]
+                stalled_since = None
+                continue
+            now = time.monotonic()
+            if stalled_since is None:
+                stalled_since = now
+            elif now - stalled_since >= _SEND_TIMEOUT:
+                log.warning("The port took no bytes for %g s; %d bytes of a frame were dropped",
+                            _SEND_TIMEOUT, len(data))
+                return False
+            time.sleep(0.001)
+        return True
 
     def selectables(self) -> list:
         """What tick(timeout=) can wait on: the port, where the platform lets a port be waited
@@ -183,9 +208,10 @@ class TcpTransport:
             self._drop(slot)
             return False
 
-    def send(self, data: bytes) -> None:
+    def send(self, data: bytes) -> bool:
         if self.host is not None and self.slots[self.host] is not None:
-            self._write(self.host, data)
+            return self._write(self.host, data)
+        return False
 
     def terminal(self, data: bytes) -> None:
         for slot, connection in enumerate(self.slots):

@@ -136,11 +136,12 @@ def parse(raw: bytes, overflowed: bool) -> Command:
 
 
 def parse_interval(text: str) -> int:
-    """The interval as blaeck reads it with strtoul: leading digits, otherwise 0."""
+    """The interval as blaeck reads it with strtoul: leading digits, otherwise 0, and at most
+    the largest unsigned long."""
     text = text.lstrip(" \t\n\r\f\v")
     digits = ""
     for c in text:
         if not c.isdigit() or not c.isascii():
             break
         digits += c
-    return int(digits) if digits else 0
+    return min(int(digits), 0xFFFFFFFF) if digits else 0

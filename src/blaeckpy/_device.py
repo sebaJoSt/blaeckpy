@@ -301,6 +301,7 @@ class Blaeck(_DeviceBase):
         self._last_interval_ms = 0
 
         self._began = False
+        self._closed = False
         # The calls still waiting for their function, for begin() to refuse.
         self._without_function: list[str] = []
         self._status: _status.StatusPage | None = None
@@ -593,6 +594,7 @@ class Blaeck(_DeviceBase):
         """Stops using the transport. A serial port or listening socket stays open, for the
         script to close; the connections blaeckpy accepted are closed. This is the end of the
         device: no callback runs for it, and no begin() may follow. Safe to call again."""
+        self._closed = True
         if self._transport is not None:
             self._transport.close()
         self._transport = None
@@ -718,9 +720,10 @@ class Blaeck(_DeviceBase):
         """A host to send frames to: on serial always, on TCP once one sent a BLAECK. command."""
         return self._transport is not None and self._transport.has_host()
 
-    def _send(self, frame: bytes) -> None:
+    def _send(self, frame: bytes) -> bool:
+        """False if the frame didn't go out whole, so nothing counts as delivered."""
         assert self._transport is not None
-        self._transport.send(frame)
+        return self._transport.send(frame)
 
     def _read(self) -> None:
         if self._transport is None:
@@ -856,7 +859,9 @@ class Blaeck(_DeviceBase):
         if written is not None:
             if written._on_change is not None:
                 self._safe(written._on_change)
-            self._write_property_frame(written)
+            # on_change may have removed it, as clear_all_controls() does.
+            if any(p is written for p in self._properties):
+                self._write_property_frame(written)
 
     # ----- the entity list, property values and events -----
 
@@ -883,7 +888,8 @@ class Blaeck(_DeviceBase):
         # A host must know the property before a value of it arrives.
         self._flush_catalogs()
         value = prop._current()
-        self._send(frames.property_value(self._properties.index(prop), prop.dtype, value))
+        if not self._send(frames.property_value(self._properties.index(prop), prop.dtype, value)):
+            return False
         prop._reporting.valid = True
         prop._reporting.baseline = value
         prop._reporting.last_write_ms = self._clock.millis()
@@ -952,7 +958,7 @@ class Blaeck(_DeviceBase):
         return (not self._data_stopped or self._answering) and self._ready()
 
     def _write_all(self, msg_id: int, timestamp: int | None) -> None:
-        if not self._signals:
+        if not self._signals or self._closed:
             return
         if self._before_write is not None:
             self._safe(self._before_write)
@@ -965,6 +971,8 @@ class Blaeck(_DeviceBase):
         self._write_data(0, [signal], timestamp)
 
     def _write_if_due(self, timestamp: int | None) -> None:
+        if self._closed:
+            return
         now = self._clock.millis()
         elapsed = now - self._last_interval_ms
         initial = self._timed and self._timed_first
@@ -1022,9 +1030,10 @@ class Blaeck(_DeviceBase):
         has_ts = self._timestamp_mode is not TimestampMode.NONE
         hash_ = schema_hash([(None if s.device_id == 0 else self._devices[s.device_id - 1].name,
                               s.name, s.unit, s.dtype) for s in ordered])
-        self._send(frames.data(values, schema_hash=hash_, flags=flags,
-                               timestamp_mode=_clock.WIRE[self._timestamp_mode],
-                               timestamp=timestamp if has_ts else None, message_id=msg_id))
+        if not self._send(frames.data(values, schema_hash=hash_, flags=flags,
+                                      timestamp_mode=_clock.WIRE[self._timestamp_mode],
+                                      timestamp=timestamp if has_ts else None, message_id=msg_id)):
+            return
         sent_at = self._clock.millis()
         for s in self._signals:
             if id(s) in chosen and s._reporting is not None:
