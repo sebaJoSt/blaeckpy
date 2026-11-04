@@ -151,14 +151,15 @@ logging.getLogger("blaeckpy").setLevel(logging.WARNING)   # only warnings and er
 The status page shows the device in a browser: its connection, the clients connected, and each
 device's signals and entities with their current values, refreshed every second. It needs no
 internet. It runs on port 8080, or on a free port if 8080 is taken, and the terminal says
-which. On TCP it listens on the same address as the device; on serial, on every interface, so
-the page of a headless computer such as a Raspberry Pi can be opened from another. The page only
-shows; it changes nothing on the device. A sensor's `get=` is read for the page only while the
+which. On TCP it listens on the same address as the device. On serial it stays on this computer,
+unless `status_host` opens it to others, for a headless computer such as a Raspberry Pi. It has
+no login, so anyone who can reach it can read it. The page only shows; it changes nothing on the device. A sensor's `get=` is read for the page only while the
 page is open, and a password input shows as `••••••••`.
 
 ```python
 device.begin(server, status_port=8081)   # another port
 device.begin(server, status_port=None)   # no status page
+device.begin(port, status_host="0.0.0.0")   # a serial device's page, open to other computers
 ```
 
 ## Examples

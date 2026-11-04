@@ -1,5 +1,5 @@
 """The status page: a small web page showing the device, its connection, signals and entities,
-refreshed every second. On by default, at http://<computer>:8080.
+refreshed every second. On by default, on port 8080.
 
 The HTTP server runs on a thread of its own, but never touches the device: tick() builds a
 snapshot about twice a second, on the script's thread, and the server only hands out the latest.
@@ -248,9 +248,9 @@ def _pico() -> bytes:
     return _pico_css
 
 
-def bind_address(transport) -> tuple[str, int]:
-    """Where the page listens: on TCP, where the device does; on serial, everywhere, so the
-    page of a headless computer can be reached from another."""
+def bind_address(transport, host: str | None = None) -> tuple[str, int]:
+    """Where the page listens: on TCP, where the device does; on serial, where ``host`` says, and
+    otherwise on this computer only: a script on a serial port hasn't asked to be on the network."""
     server = getattr(transport, "server", None)
     if server is not None:
         try:
@@ -258,14 +258,15 @@ def bind_address(transport) -> tuple[str, int]:
             return host, server.family
         except OSError:
             pass
-    return "0.0.0.0", socket.AF_INET
+    host = host or "127.0.0.1"
+    return host, socket.AF_INET6 if ":" in host else socket.AF_INET
 
 
 class StatusPage:
-    def __init__(self, device, port: int) -> None:
+    def __init__(self, device, port: int, host: str | None = None) -> None:
         from ._device import LIBRARY_VERSION
 
-        host, family = bind_address(device._transport)
+        host, family = bind_address(device._transport, host)
         template = files("blaeckpy").joinpath("static", "status.html").read_text(encoding="utf-8")
         self.page = string.Template(template).safe_substitute(
             device_name=html.escape(device.name), lib_version=html.escape(LIBRARY_VERSION)).encode()

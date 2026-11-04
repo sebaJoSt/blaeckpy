@@ -510,7 +510,8 @@ class Blaeck(_DeviceBase):
     # ----- transport and loop -----
 
     def begin(self, transport: object, *, max_clients: int | None = None,
-              status_port: int | None = _DEFAULT) -> None:  # type: ignore[assignment]
+              status_port: int | None = _DEFAULT,  # type: ignore[assignment]
+              status_host: str | None = None) -> None:
         """Starts using a serial port or a listening TCP socket the script opened. Once only, also
         after close(), as in blaeck.
 
@@ -518,8 +519,9 @@ class Blaeck(_DeviceBase):
         command is the host, the others are terminals.
 
         A status page shows the device in a browser, on ``status_port`` (8080 by default, or a
-        free one if that is taken; None for none). On TCP it listens where the device does; on
-        serial, on every interface.
+        free one if that is taken; None for none). On TCP it listens where the device does. On
+        serial, on this computer only, unless ``status_host`` says otherwise: "0.0.0.0" for every
+        interface, so another computer can open it.
         """
         if self._began:
             raise RuntimeError("begin() was called already; a device begins once")
@@ -528,6 +530,12 @@ class Blaeck(_DeviceBase):
                              "as a decorator")
         if max_clients is not None and not hasattr(transport, "accept"):
             raise TypeError("max_clients is for a TCP server, not a serial port")
+        if status_host is not None:
+            if hasattr(transport, "accept"):
+                raise TypeError("status_host is for a serial port; on TCP the status page listens "
+                                "where the device does")
+            if not isinstance(status_host, str):
+                raise TypeError("status_host is text, an address such as \"0.0.0.0\"")
         if status_port is _DEFAULT:
             status_port = _status.DEFAULT_PORT
         if status_port is not None and (isinstance(status_port, bool) or not isinstance(status_port, int)
@@ -560,7 +568,7 @@ class Blaeck(_DeviceBase):
             log.info("  %s", line, extra=_console.styled(f"  {line}"))
         if status_port is not None:
             try:
-                self._status = _status.StatusPage(self, status_port)
+                self._status = _status.StatusPage(self, status_port, status_host)
             except OSError as e:
                 log.warning("No status page: %s", e)
             else:

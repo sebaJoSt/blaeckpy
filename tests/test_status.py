@@ -136,12 +136,39 @@ def test_no_status_page_with_none_and_a_bad_port_is_refused(server):
             Blaeck("Bench").begin(server, status_port=bad)
 
 
-def test_a_serial_device_listens_everywhere():
+def test_a_serial_device_is_on_this_computer_only_until_it_says_otherwise():
     device = Blaeck("Bench")
-    device.begin(SerialPort(), status_port=None)
-    assert _status.bind_address(device._transport) == ("0.0.0.0", socket.AF_INET)
-    data = _status.snapshot(device)
-    assert data["connection"] == "Serial COM7 at 115200 baud" and data["clients"] is None
+    device.begin(SerialPort(), status_port=0)
+    try:
+        assert device._status._server.server_address[0] == "127.0.0.1"
+        assert [u.rsplit(":", 1)[0] for u in device._status.urls] == ["http://127.0.0.1"]
+        data = api(device)
+        assert data["connection"] == "Serial COM7 at 115200 baud" and data["clients"] is None
+    finally:
+        device.close()
+
+    device = Blaeck("Bench")
+    device.begin(SerialPort(), status_port=0, status_host="0.0.0.0")
+    try:
+        assert device._status._server.server_address[0] == "0.0.0.0"
+        assert api(device)["device"]["name"] == "Bench"
+    finally:
+        device.close()
+
+
+def test_status_host_is_for_a_serial_port_and_is_text(server):
+    with pytest.raises(TypeError, match="serial"):
+        Blaeck().begin(server, status_host="0.0.0.0")
+    with pytest.raises(TypeError, match="text"):
+        Blaeck().begin(SerialPort(), status_host=8080)
+
+
+def test_an_address_that_cant_be_listened_on_means_no_page_and_the_device_goes_on(caplog):
+    device = Blaeck("Bench")
+    with caplog.at_level(logging.WARNING, logger="blaeckpy"):
+        device.begin(SerialPort(), status_port=0, status_host="192.0.2.1")  # A documentation address.
+    assert device._status is None and "No status page" in caplog.text
+    device.tick()
     device.close()
 
 
