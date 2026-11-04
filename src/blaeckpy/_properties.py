@@ -200,14 +200,17 @@ def _parse_whole(text: str) -> int | None:
     return value if INT64_MIN <= value <= INT64_MAX else None
 
 
-def _step_decimals(step: float) -> int:
+def _step_decimals(step: float) -> int | None:
+    """The decimals a step has, or None if it has more than six. Scaled to a whole number of at
+    least 1: 0.0001 is within a thousandth of 0, but has four decimals, not none."""
     scale = 1.0
-    for decimals in range(6):
+    for decimals in range(7):
         scaled = step * scale
-        if abs(scaled - math.floor(scaled + 0.5)) < 1e-3:
+        whole = math.floor(scaled + 0.5)
+        if whole >= 1 and abs(scaled - whole) < 1e-3:
             return decimals
         scale *= 10.0
-    return 6
+    return None
 
 
 class Property[T](_Presented):
@@ -415,10 +418,11 @@ class NumberInput[T: (int, float)](_Input[T]):
             nearest = math.floor(steps + 0.5)
             if abs(steps - nearest) < 1e-3:
                 snapped = float(low + nearest * step)
+                decimals = _step_decimals(step)
                 scale = 1.0
-                for _ in range(_step_decimals(step)):
+                for _ in range(decimals or 0):
                     scale *= 10.0
-                if abs(snapped) * scale < 1e15:
+                if decimals is not None and abs(snapped) * scale < 1e15:
                     snapped = math.floor(abs(snapped) * scale + 0.5) / scale * (-1.0 if snapped < 0.0 else 1.0)
                 number = snapped
         self._value = number  # type: ignore[assignment]

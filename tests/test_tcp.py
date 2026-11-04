@@ -222,3 +222,30 @@ def test_close_closes_the_connections_without_on_disconnect(server):
     assert events == ["connect"]
     assert client.recv(1) == b""  # The device's end closed.
     client.close()
+
+
+def test_commands_sent_before_a_half_close_are_all_answered(server):
+    device, ran = Blaeck("Bench"), []
+    device.on_command("MOTOR", lambda *p: ran.append(p))
+    device.begin(server)
+    a = Client(server)
+    pump(device, [a])
+    a.send("<MOTOR,1><MOTOR,2><MOTOR,3>")
+    a.sock.shutdown(socket.SHUT_WR)
+    pump(device, [a])
+    assert ran == [("1",), ("2",), ("3",)]
+    assert a.closed
+    device.close()
+
+
+def test_closing_from_on_disconnect_while_a_host_is_replaced_ends_tick_quietly(server):
+    device = Blaeck("Bench")
+    device.on_disconnect(lambda slot, address: device.close())
+    device.begin(server)
+    a, b = Client(server), Client(server)
+    pump(device, [a, b])
+    a.send("<BLAECK.GET_DEVICES>")
+    pump(device, [a, b])
+    b.send("<BLAECK.GET_DEVICES>")
+    pump(device, [a, b])
+    assert a.closed and b.closed

@@ -94,6 +94,8 @@ class _Connection:
         self.sock = sock
         self.address = address
         self.receiver = Receiver()
+        # The peer closed its side: what it sent is still answered, then the connection drops.
+        self.eof = False
 
 
 class TcpTransport:
@@ -152,8 +154,12 @@ class TcpTransport:
         self._on_disconnect(slot, address, reason)
 
     def _pull(self) -> None:
-        """Takes in what each connection has, and notices which ones closed."""
-        open_ = [c.sock for c in self.slots if c is not None]
+        """Takes in what each connection has, and notices which ones closed. A closed one is
+        dropped once the commands it sent before closing are answered."""
+        for slot, connection in enumerate(self.slots):
+            if connection is not None and connection.eof and not connection.receiver.has_command():
+                self._drop(slot)
+        open_ = [c.sock for c in self.slots if c is not None and not c.eof]
         if not open_:
             return
         readable, _, _ = select.select(open_, [], [], 0)
@@ -165,9 +171,12 @@ class TcpTransport:
             except (BlockingIOError, InterruptedError, TimeoutError):
                 continue
             except OSError:
-                data = b""
+                self._drop(slot)
+                continue
             if data:
                 connection.receiver.feed(data)
+            elif connection.receiver.has_command():
+                connection.eof = True
             else:
                 self._drop(slot)
 
@@ -219,7 +228,7 @@ class TcpTransport:
                 self._write(slot, data)
 
     def selectables(self) -> list:
-        return [self.server] + [c.sock for c in self.slots if c is not None]
+        return [self.server] + [c.sock for c in self.slots if c is not None and not c.eof]
 
     def close(self) -> None:
         for slot, connection in enumerate(self.slots):

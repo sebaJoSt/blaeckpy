@@ -370,13 +370,16 @@ class Blaeck(_DeviceBase):
         Missing and back again before that is no change."""
         if not self._ready():
             return
+        # A notice that didn't go out stays due, and those after it wait, so they keep their order.
         for d in self._devices:
             if d._restart_pending:
-                self._send(frames.device_notification(d._id, frames.DeviceEvent.RESTARTED))
+                if not self._send(frames.device_notification(d._id, frames.DeviceEvent.RESTARTED)):
+                    return
                 d._restart_pending = False
             if d._missing != d._reported_missing:
                 event = frames.DeviceEvent.NOT_RESPONDING if d._missing else frames.DeviceEvent.RESPONDING_AGAIN
-                self._send(frames.device_notification(d._id, event))
+                if not self._send(frames.device_notification(d._id, event)):
+                    return
                 d._reported_missing = d._missing
 
     def _ordered_signals(self) -> list[Signal]:
@@ -501,7 +504,10 @@ class Blaeck(_DeviceBase):
 
     def _safe(self, fn, *args):
         """Runs a script's function inside tick(). An exception is logged with its traceback and
-        tick() goes on: one bad command must not end the device."""
+        tick() goes on: one bad command must not end the device. Once a callback closed the
+        device, no other runs."""
+        if self._closed:
+            return None
         try:
             return fn(*args)
         except Exception:
@@ -513,8 +519,8 @@ class Blaeck(_DeviceBase):
     def begin(self, transport: object, *, max_clients: int | None = None,
               status_port: int | None = _DEFAULT,  # type: ignore[assignment]
               status_host: str | None = None) -> None:
-        """Starts using a serial port or a listening TCP socket the script opened. Once only, also
-        after close().
+        """Starts using a serial port or a listening TCP socket the script opened. Once only, and
+        never after close().
 
         On TCP, up to ``max_clients`` connections (4 by default): the newest to send a BLAECK.
         command is the host, the others are terminals.
@@ -526,6 +532,8 @@ class Blaeck(_DeviceBase):
         """
         if self._began:
             raise RuntimeError("begin() was called already; a device begins once")
+        if self._closed:
+            raise RuntimeError("close() was called; a closed device can't begin")
         if self._without_function:
             raise ValueError(f"{self._without_function[0]} has no function: pass one, or use it "
                              "as a decorator")
@@ -638,7 +646,7 @@ class Blaeck(_DeviceBase):
         if not timeout:
             self._hint_busy_loop()
             self._pass += 1
-            self._read()
+            self._read(timestamp)
             self._write_if_due(timestamp)
             self._refresh_status()
             return
@@ -721,11 +729,13 @@ class Blaeck(_DeviceBase):
         return self._transport is not None and self._transport.has_host()
 
     def _send(self, frame: bytes) -> bool:
-        """False if the frame didn't go out whole, so nothing counts as delivered."""
-        assert self._transport is not None
+        """False if the frame didn't go out whole, so nothing counts as delivered. Also after a
+        callback closed the device."""
+        if self._transport is None:
+            return False
         return self._transport.send(frame)
 
-    def _read(self) -> None:
+    def _read(self, timestamp: int | None = None) -> None:
         if self._transport is None:
             return
         self._write_restarted()
@@ -737,9 +747,12 @@ class Blaeck(_DeviceBase):
             # Before the truncation check, so even a cut-off built-in makes its sender the host.
             if cmd.name.startswith("BLAECK."):
                 self._transport.builtin_received()
+                # on_disconnect for the host it replaced may have closed the device.
+                if self._closed:
+                    return
             self._answering = True
             try:
-                self._answer(cmd)
+                self._answer(cmd, timestamp)
                 self._flush_catalogs()
             finally:
                 self._answering = False
@@ -751,8 +764,10 @@ class Blaeck(_DeviceBase):
         # Held back until a host can hear it.
         if self._restart_reported or not self._ready():
             return
+        # Tried again at the next tick if it didn't go out.
+        if not self._send(frames.device_notification(0, frames.DeviceEvent.RESTARTED)):
+            return
         self._restart_reported = True
-        self._send(frames.device_notification(0, frames.DeviceEvent.RESTARTED))
         self._send_entity_list(0)
 
     def _ack(self, cmd: _commands.Command, reason: int) -> None:
@@ -763,7 +778,7 @@ class Blaeck(_DeviceBase):
         self._send(frames.command_ack(frames.fnv1a32(cmd.raw[cmd.prefix_len:]), name_hash, reason,
                                       cmd.message_id))
 
-    def _answer(self, cmd: _commands.Command) -> None:
+    def _answer(self, cmd: _commands.Command, timestamp: int | None = None) -> None:
         if cmd.truncated:
             self._ack(cmd, _ACK_TRUNCATED)
             return
@@ -773,7 +788,7 @@ class Blaeck(_DeviceBase):
             self._ack(cmd, _ACK_OK)
             self._requested = True
             try:
-                self._write_all(msg_id, None)
+                self._write_all(msg_id, timestamp)
             finally:
                 self._requested = False
         elif name == "BLAECK.GET_DEVICES":
@@ -872,12 +887,12 @@ class Blaeck(_DeviceBase):
         return entries
 
     def _send_entity_list(self, msg_id: int) -> None:
-        self._send(frames.entity_list(self._entries(), msg_id))
-        self._catalog_dirty = False
+        self._catalog_dirty = not self._send(frames.entity_list(self._entries(), msg_id))
 
-    def _flush_catalogs(self) -> None:
+    def _flush_catalogs(self) -> bool:
         if self._catalog_dirty and self._ready():
             self._send_entity_list(0)
+        return not self._catalog_dirty
 
     def _may_write_entities(self) -> bool:
         return (not self._entities_stopped or self._answering) and self._ready()
@@ -886,7 +901,8 @@ class Blaeck(_DeviceBase):
         if not self._may_write_entities():
             return False
         # A host must know the property before a value of it arrives.
-        self._flush_catalogs()
+        if not self._flush_catalogs():
+            return False
         value = prop._current()
         if not self._send(frames.property_value(self._properties.index(prop), prop.dtype, value)):
             return False
@@ -912,7 +928,8 @@ class Blaeck(_DeviceBase):
     def _write_event(self, event: Event, type_index: int) -> None:
         if not self._may_write_entities():
             return
-        self._flush_catalogs()
+        if not self._flush_catalogs():
+            return
         self._send(frames.event(self._events.index(event), type_index))
 
     def _set_timed(self, on: bool, interval_ms: int) -> None:
@@ -929,8 +946,9 @@ class Blaeck(_DeviceBase):
         entries += [frames.DeviceEntry(d._id, d.name, d.hw_version, d.fw_version, signals_of(d._id),
                                        not_responding=d._missing, restarted=d._restart_pending)
                     for d in self._devices]
-        self._send(frames.device_list(LIBRARY_NAME, LIBRARY_VERSION,
-                                      _commands.COMMAND_MAX_CHARS - 1, entries, msg_id))
+        if not self._send(frames.device_list(LIBRARY_NAME, LIBRARY_VERSION,
+                                             _commands.COMMAND_MAX_CHARS - 1, entries, msg_id)):
+            return
         # The list told the host every state, so no notice for it is still due.
         self._restart_reported = True
         for d in self._devices:

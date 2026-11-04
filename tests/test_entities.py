@@ -595,6 +595,73 @@ def test_after_close_on_before_write_no_longer_runs():
     assert calls == []
 
 
+@pytest.mark.parametrize("kind", ["property", "event"])
+def test_properties_and_events_wait_for_their_catalog(monkeypatch, kind):
+    from blaeckpy import _transport
+    from blaeckpy.protocol import envelope
+    monkeypatch.setattr(_transport, "_SEND_TIMEOUT", 0)
+
+    class CatalogStalledPort(Port):
+        stalled = False
+
+        def write(self, data):
+            if self.stalled and data.startswith(envelope.START + b"\x90"):
+                return 0
+            self.outgoing += data
+            return len(data)
+
+    device, port = Blaeck(), CatalogStalledPort()
+    device.begin(port)
+    assert ack_reason(device, port, "<BLAECK.ENTITIES_START>") == 0
+    port.outgoing.clear()
+    if kind == "property":
+        write = device.add_switch("Heater", True).write
+    else:
+        event = device.add_event("Alarms", ["Overheat"])
+        write = lambda: event.write("Overheat")
+
+    port.stalled = True
+    write()
+    assert port.outgoing == b""
+
+    port.stalled = False
+    write()
+    sent = [f for f in _decode.Decoder().feed(bytes(port.outgoing))
+            if isinstance(f, _decode.Frame)]
+    assert [f.key for f in sent] == [0x90, 0x95 if kind == "property" else 0x85]
+    device.close()
+
+
+@pytest.mark.parametrize("update", [True, False], ids=["changed", "requested"])
+def test_a_failed_catalog_is_retried_after_the_port_recovers(monkeypatch, update):
+    from blaeckpy import _transport
+    monkeypatch.setattr(_transport, "_SEND_TIMEOUT", 0)
+    device, port = Blaeck(), TrickledPort()
+    device.add_switch("Heater")
+    device.begin(port)
+    assert ack_reason(device, port, "<BLAECK.ENTITIES_START>") == 0
+    port.outgoing.clear()
+    if update:
+        device.add_switch("Pump", True)
+    else:
+        port.incoming += b"<BLAECK.WRITE_ENTITIES>"
+
+    port.stalled = True
+    device.tick()
+    assert port.outgoing == b""
+
+    port.stalled = False
+    device.tick()
+    device.tick()
+    sent = [f for f in _decode.Decoder().feed(bytes(port.outgoing))
+            if isinstance(f, _decode.Frame)]
+    assert [f.key for f in sent] == ([0x90, 0x95] if update else [0x90])
+    assert [p.name for p in sent[0].body.properties] == (["Heater", "Pump"] if update else ["Heater"])
+    if update:
+        assert sent[1].body.index == 1 and sent[1].body.value is True
+    device.close()
+
+
 class TrickledPort(Port):
     """Takes at most 3 bytes a write, and none while stalled."""
     stalled = False
@@ -623,3 +690,56 @@ def test_a_frame_the_port_takes_in_parts_goes_out_whole_and_a_stalled_one_is_sen
     port.stalled = False
     device.tick()
     assert [f.values for f in data_frames(port)][-1] == {0: 2.0}
+
+def test_a_step_finer_than_a_thousandth_keeps_its_decimals():
+    device, port = Blaeck(), Port()
+    fine = device.add_number_input("Fine", 0.01, min=0.01, max=0.02, step=0.0001)
+    device.begin(port)
+    assert ack_reason(device, port, "<Fine,0.015>") == 0
+    assert fine.value == 0.015
+    assert ack_reason(device, port, "<Fine,0.0123>") == 0
+    assert fine.value == 0.0123
+
+
+def test_device_notices_that_did_not_go_out_are_sent_once_the_port_recovers(monkeypatch):
+    from blaeckpy import _transport
+    monkeypatch.setattr(_transport, "_SEND_TIMEOUT", 0)
+    device, port = Blaeck(), TrickledPort()
+    pump = device.add_device("Pump")
+    port.stalled = True
+    device.begin(port)
+    device.tick()
+    pump.write_restarted()
+    pump.mark_missing()
+    port.stalled = False
+    device.tick()
+    sent = [f for f in _decode.Decoder().feed(bytes(port.outgoing)) if isinstance(f, _decode.Frame)]
+    notices = [(f.body.device_id, f.body.event) for f in sent if f.key == 0xC1]
+    assert notices == [(0, 1), (1, 1), (1, 2)]
+    device.close()
+
+
+def test_a_requested_write_carries_the_timestamp_tick_was_given():
+    device, port, speed = clock_device()
+    device.set_timestamp_mode("unix", clock=lambda: 5)
+    port.incoming += b"<BLAECK.WRITE_DATA>"
+    device.tick(timestamp=123)
+    assert data_frames(port)[-1].timestamp == 123
+
+
+def test_a_command_whose_function_closes_the_device_runs_nothing_after_it():
+    device, port, seen = Blaeck(), Port(), []
+    device.on_command("STOP", lambda *p: device.close())
+    device.on_any_command(lambda name, *p: seen.append(name))
+    device.begin(port)
+    port.incoming += b"<STOP>"
+    device.tick()
+    assert seen == []
+    device.tick()
+
+
+def test_a_closed_device_cannot_begin():
+    device = Blaeck()
+    device.close()
+    with pytest.raises(RuntimeError, match="closed"):
+        device.begin(Port())
