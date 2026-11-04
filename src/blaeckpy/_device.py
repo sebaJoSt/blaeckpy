@@ -740,6 +740,9 @@ class Blaeck(_DeviceBase):
             return
         self._write_restarted()
         self._write_device_notices()
+        # A write that failed may have dropped the host, and on_disconnect closed the device.
+        if self._transport is None:
+            return
         received = self._transport.receive()
         if received is not None:
             cmd = _commands.parse(*received)

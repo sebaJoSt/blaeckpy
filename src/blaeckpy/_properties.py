@@ -213,6 +213,16 @@ def _step_decimals(step: float) -> int | None:
     return None
 
 
+def _snap_decimals(low: float, step: float) -> int | None:
+    """The decimals of min + n * step: the step's or the minimum's, whichever has more. 0.05 with
+    a step of 0.1 lands on 0.15, which a step's one decimal would round to 0.2."""
+    step_decimals = _step_decimals(step)
+    low_decimals = 0 if low == 0 else _step_decimals(abs(low))
+    if step_decimals is None or low_decimals is None:
+        return None
+    return max(step_decimals, low_decimals)
+
+
 class Property[T](_Presented):
     """An entity a host shows: an input it can also set, or a sensor."""
 
@@ -418,7 +428,7 @@ class NumberInput[T: (int, float)](_Input[T]):
             nearest = math.floor(steps + 0.5)
             if abs(steps - nearest) < 1e-3:
                 snapped = float(low + nearest * step)
-                decimals = _step_decimals(step)
+                decimals = _snap_decimals(float(low), float(step))
                 scale = 1.0
                 for _ in range(decimals or 0):
                     scale *= 10.0

@@ -743,3 +743,10 @@ def test_a_closed_device_cannot_begin():
     device.close()
     with pytest.raises(RuntimeError, match="closed"):
         device.begin(Port())
+
+def test_a_step_from_a_minimum_with_more_decimals_keeps_the_minimum_s_decimals():
+    device, port = Blaeck(), Port()
+    value = device.add_number_input("FromMin", 0.05, min=0.05, max=0.15, step=0.1)
+    device.begin(port)
+    assert ack_reason(device, port, "<FromMin,0.15>") == 0
+    assert value.value == 0.15

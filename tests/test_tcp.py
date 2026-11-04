@@ -249,3 +249,23 @@ def test_closing_from_on_disconnect_while_a_host_is_replaced_ends_tick_quietly(s
     b.send("<BLAECK.GET_DEVICES>")
     pump(device, [a, b])
     assert a.closed and b.closed
+
+def test_closing_from_on_disconnect_when_a_notice_fails_ends_tick_quietly(server):
+    import struct
+    device = Blaeck("Bench")
+    device.on_disconnect(lambda slot, address: device.close())
+    device.begin(server)
+    a = Client(server)
+    pump(device, [a])
+    a.send("<BLAECK.WRITE_ENTITIES>")
+    # Until the command, there is no host for the restart notice; it goes out at the next tick.
+    for _ in range(50):
+        device.tick()
+        if device._transport.has_host():
+            break
+        time.sleep(0.01)
+    a.sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    a.close()
+    time.sleep(0.1)
+    device.tick()
+    device.tick()
