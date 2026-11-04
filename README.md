@@ -68,7 +68,7 @@ Everything else stays the same. Connect the host to the other end of the serial 
 115200 baud.
 
 If the port goes away, a USB cable pulled say, `tick()` raises the port's error. A device begins
-once, as in blaeck, so to go on, start the script again.
+once, so to go on, start the script again.
 
 Three calls do the work:
 
@@ -99,6 +99,7 @@ Everything a script declares on the board it can also declare on a sub-device.
 | `@device.on_command(name)`, `@device.on_any_command` | Commands no host lists; parameters arrive as text |
 | `add_device(name)`, `mark_missing()`, `mark_present()`, `write_restarted()` | A second board shown as its own device |
 | `unit=`, `icon=`, `device_class=`, `category=Category.CONFIG`, ... | How a host shows it |
+| `sensor.icon = ...`, `input.set_range(0, 20)`, `signal.write_on_change = 0.5`, ... | The same, changed while running; a host gets the new entity list |
 | `@device.on_data_start`, `@device.on_interval_start`, ... | Following what the host switches on and off |
 | `@device.on_connect`, `@device.on_disconnect` | TCP connections, with `(client_no, address)` |
 | `device.terminal.print(...)` | Text for whoever looks into the running device |
@@ -122,8 +123,8 @@ A few things to know:
   and `clock=` are in microseconds, as they are on the wire.
 - **The device list names blaeckpy** and its own version, so Loggbok and error reports show which
   library a device runs.
-- **A command may be up to 1023 characters:** room for a 255-byte text, the most Home Assistant holds, even with every byte percent-encoded. The device
-  list tells a host the limit.
+- **A command may be up to 1023 characters:** room for a 255-byte text, the most Home Assistant
+  holds, even with every byte percent-encoded. The device list tells a host the limit.
 
 ## Status page and terminal output
 
@@ -153,8 +154,9 @@ device's signals and entities with their current values, refreshed every second.
 internet. It runs on port 8080, or on a free port if 8080 is taken, and the terminal says
 which. On TCP it listens on the same address as the device. On serial it stays on this computer,
 unless `status_host` opens it to others, for a headless computer such as a Raspberry Pi. It has
-no login, so anyone who can reach it can read it. The page only shows; it changes nothing on the device. A sensor's `get=` is read for the page only while the
-page is open, and a password input shows as `••••••••`.
+no login, so anyone who can reach it can read it. The page only shows; it changes nothing on the
+device. A sensor's `get=` is read for the page only while the page is open, and a password input
+shows as `••••••••`.
 
 ```python
 device.begin(server, status_port=8081)   # another port
@@ -164,8 +166,9 @@ device.begin(port, status_host="0.0.0.0")   # a serial device's page, open to ot
 
 ## Examples
 
-The examples are in [`examples/`](https://github.com/sebaJoSt/blaeckpy/tree/main/examples). Each one is a single file that listens on TCP port
-2323; a comment shows the line to use for serial instead. Run one and point Loggbok at it.
+The examples are in [`examples/`](https://github.com/sebaJoSt/blaeckpy/tree/main/examples). Each
+one is a single file that listens on TCP port 2323; a comment shows the line to use for serial
+instead. Run one and point Loggbok at it.
 
 | Example | What it teaches |
 |---|---|
@@ -177,6 +180,7 @@ The examples are in [`examples/`](https://github.com/sebaJoSt/blaeckpy/tree/main
 | [events.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/events.py) | Declaring and reporting occurrences |
 | [write_modes.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/write_modes.py) | Interval, on-change and explicit signal writes |
 | [sub_devices.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/sub_devices.py) | A second device shown below the board, going missing and restarting |
+| [waveform_generator.py](https://github.com/sebaJoSt/blaeckpy/blob/main/examples/waveform_generator.py) | A waveform driven from a Home Assistant dashboard |
 
 ## Testing
 

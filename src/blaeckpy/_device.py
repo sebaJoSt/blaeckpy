@@ -59,7 +59,7 @@ class _DeviceBase:
             raise ValueError(f"signal {name!r} exists already")
         type_, value = type_and_value(type_or_initial, initial)
         signal: Signal[T] = Signal(self._core, self._id, name, type_, value,  # type: ignore[arg-type]
-                                   write_at_interval, write_on_change, min_interval_ms, check_unit(unit))
+                                   write_at_interval, write_on_change, min_interval_ms, unit)
         self._core._signals.append(signal)
         return signal
 
@@ -183,7 +183,7 @@ class _DeviceBase:
                                     disabled_by_default=disabled_by_default)
 
         def register(fn: Callable[[], None]) -> Button:
-            button = Button(self._id, name, fn, presentation)
+            button = Button(self._core, self._id, name, fn, presentation)
             self._core._buttons.append(button)
             self._core._catalog_changed()
             return button
@@ -407,9 +407,9 @@ class Blaeck(_DeviceBase):
         of the new signals from the next device list it asks for; one that is logging stops at
         the next data frame, whose schema hash no longer matches its columns.
 
-        A sensor that shows a signal keeps showing that Signal object, as a blaeck sensor keeps
-        reading its variable; one added anew under the same name is another object. To show
-        the new one, clear_all_sensors() and add the sensor again."""
+        A sensor that shows a signal keeps showing that Signal object; one added anew under the
+        same name is another object. To show the new one, clear_all_sensors() and add the sensor
+        again."""
         for sig in self._signals:
             sig._removed = True
         self._signals.clear()
@@ -513,7 +513,7 @@ class Blaeck(_DeviceBase):
               status_port: int | None = _DEFAULT,  # type: ignore[assignment]
               status_host: str | None = None) -> None:
         """Starts using a serial port or a listening TCP socket the script opened. Once only, also
-        after close(), as in blaeck.
+        after close().
 
         On TCP, up to ``max_clients`` connections (4 by default): the newest to send a BLAECK.
         command is the host, the others are terminals.
@@ -592,8 +592,7 @@ class Blaeck(_DeviceBase):
     def close(self) -> None:
         """Stops using the transport. A serial port or listening socket stays open, for the
         script to close; the connections blaeckpy accepted are closed. This is the end of the
-        device, as blaeck's end() is: no callback runs for it, and no begin() may follow. Safe to
-        call again."""
+        device: no callback runs for it, and no begin() may follow. Safe to call again."""
         if self._transport is not None:
             self._transport.close()
         self._transport = None
@@ -623,7 +622,7 @@ class Blaeck(_DeviceBase):
 
         With ``timeout`` (seconds, as paho-mqtt's ``loop(timeout)``), it then waits up to that
         long, answering commands as they arrive and sending what falls due in the meantime on
-        time. ``timeout=0``, the default, never waits, as in blaeck.
+        time. ``timeout=0``, the default, never waits.
 
         ``timestamp`` stamps the data frames this call sends with a time of the script's own,
         such as when the values were measured, in microseconds in the timestamp mode's epoch.

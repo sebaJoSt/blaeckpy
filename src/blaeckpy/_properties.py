@@ -7,7 +7,7 @@ import math
 import re
 from collections.abc import Callable, Sequence
 from enum import StrEnum
-from typing import Any
+from typing import Any, overload
 
 from ._signal import ANY_CHANGE, Signal, _Reporting, changed, check_delta, check_unit, checked, type_and_value
 from .protocol import frames
@@ -87,28 +87,46 @@ def _enum(value, enum_type, what: str):
         raise ValueError(f"{what} {value!r} is not one of {allowed}") from None
 
 
+def _text_or_none(text):
+    return None if text is None else check_unit(text)  # no control characters
+
+
+def _precision(decimals):
+    if decimals is None:
+        return None
+    if isinstance(decimals, bool) or not isinstance(decimals, int) or not 0 <= decimals <= 255:
+        raise ValueError("display_precision is 0 to 255 decimal places")
+    return decimals
+
+
+_CHECKS: dict[str, Callable[[Any], Any]] = {
+    "display_name": _text_or_none,
+    "icon": _text_or_none,
+    "device_class": _text_or_none,
+    "category": lambda c: _enum(c, Category, "category"),
+    "disabled_by_default": bool,
+    "force_update": bool,
+    "unit": _text_or_none,
+    "state_class": lambda c: None if c is None else _enum(c, StateClass, "state class"),
+    "display_precision": _precision,
+}
+_NUMBER_ONLY = ("unit", "state_class", "display_precision")
+
+
 class Presentation:
     """How a host shows an entity. Numbers alone have a unit, state class and precision."""
 
     def __init__(self, *, number: bool, display_name=None, icon=None, device_class=None,
                  category: Category | str = Category.NONE, disabled_by_default=False, force_update=False,
                  unit=None, state_class=None, display_precision=None):
+        self.number = number
         if not number and (unit is not None or state_class is not None or display_precision is not None):
             raise TypeError("unit, state_class and display_precision are for numbers")
-        for text in (display_name, icon, device_class):
-            if text is not None:
-                check_unit(text)  # no control characters
-        self.display_name = display_name
-        self.icon = icon
-        self.device_class = device_class
-        self.category = _enum(category, Category, "category")
-        self.disabled_by_default = bool(disabled_by_default)
-        self.force_update = bool(force_update)
-        self.unit = None if unit is None else check_unit(unit)
-        self.state_class = None if state_class is None else _enum(state_class, StateClass, "state class")
-        if display_precision is not None and not 0 <= display_precision <= 255:
-            raise ValueError("display_precision is 0 to 255 decimal places")
-        self.display_precision = display_precision
+        given = dict(display_name=display_name, icon=icon, device_class=device_class, category=category,
+                     disabled_by_default=disabled_by_default, force_update=force_update, unit=unit,
+                     state_class=state_class, display_precision=display_precision)
+        for field, value in given.items():
+            setattr(self, field, _CHECKS[field](value))
 
     def entry_args(self) -> dict:
         return dict(display_name=self.display_name, icon=self.icon, device_class=self.device_class,
@@ -117,6 +135,52 @@ class Presentation:
     def property_args(self) -> dict:
         return dict(self.entry_args(), unit=self.unit, state_class=_STATE_CLASSES[self.state_class],
                     display_precision=self.display_precision, force_update=self.force_update)
+
+
+class _Shown[V]:
+    """A presentation setting, read and set on the entity as in add_*(). A change sends the
+    entity list again; setting what is already set sends nothing, so it may be set on every
+    pass of a loop."""
+
+    def __set_name__(self, owner, name: str) -> None:
+        self.field = name
+
+    @overload
+    def __get__(self, entity: None, owner: type) -> _Shown[V]: ...
+
+    @overload
+    def __get__(self, entity: object, owner: type) -> V: ...
+
+    def __get__(self, entity, owner):
+        if entity is None:
+            return self
+        return getattr(entity._presentation, self.field)
+
+    def __set__(self, entity, value: V) -> None:
+        presentation = entity._presentation
+        if self.field in _NUMBER_ONLY and not presentation.number:
+            raise TypeError(f"{self.field} is for numbers")
+        value = _CHECKS[self.field](value)
+        if value != getattr(presentation, self.field):
+            setattr(presentation, self.field, value)
+            entity._device._catalog_changed()
+
+
+class _Presented:
+    """What every entity shows a host with: names, icon, class, category."""
+
+    _presentation: Presentation
+    display_name = _Shown[str | None]()
+    icon = _Shown[str | None]()
+    device_class = _Shown[str | None]()
+    category = _Shown[Category | str]()
+    disabled_by_default = _Shown[bool]()
+
+
+def _interval_ms(ms) -> int:
+    if isinstance(ms, bool) or not isinstance(ms, int) or ms < 0:
+        raise ValueError(f"min_interval_ms is a whole number of milliseconds, 0 or above, not {ms!r}")
+    return ms
 
 
 def _parse_whole(text: str) -> int | None:
@@ -136,12 +200,16 @@ def _step_decimals(step: float) -> int:
     return 6
 
 
-class Property[T]:
+class Property[T](_Presented):
     """An entity a host shows: an input it can also set, or a sensor."""
 
     kind: ValueKind
     writable = False
     _value: T
+    force_update = _Shown[bool]()
+    unit = _Shown[str | None]()
+    state_class = _Shown[StateClass | str | None]()
+    display_precision = _Shown[int | None]()
 
     def __init__(self, device, device_id: int, name: str, dtype: DType, presentation: Presentation,
                  write_on_change: float, min_interval_ms: int):
@@ -152,7 +220,7 @@ class Property[T]:
         self._presentation = presentation
         self._reporting = _Reporting()
         self._reporting.change_delta = check_delta(write_on_change, "write_on_change")
-        self._reporting.min_interval_ms = int(min_interval_ms)
+        self._reporting.min_interval_ms = _interval_ms(min_interval_ms)
         self._on_change: Callable[[], None] | None = None
 
     # The value as it goes out; subclasses say where it lives.
@@ -162,6 +230,24 @@ class Property[T]:
     @property
     def value(self) -> T:
         return self._current()
+
+    @property
+    def write_on_change(self) -> float:
+        """How far the value moves before it goes out again."""
+        return self._reporting.change_delta
+
+    @write_on_change.setter
+    def write_on_change(self, delta: float) -> None:
+        self._reporting.change_delta = check_delta(delta, "write_on_change")
+
+    @property
+    def min_interval_ms(self) -> int:
+        """The least time between two sends of a change."""
+        return self._reporting.min_interval_ms
+
+    @min_interval_ms.setter
+    def min_interval_ms(self, ms: int) -> None:
+        self._reporting.min_interval_ms = _interval_ms(ms)
 
     def _compare_type(self) -> type:
         return {DType.BOOL: bool, DType.TEXT: str, DType.DOUBLE: float}.get(self.dtype, int)
@@ -226,20 +312,52 @@ class NumberInput[T: (int, float)](_Input[T]):
         super().__init__(device, device_id, name, DType.INT64 if type_ is int else DType.DOUBLE,
                          presentation, write_on_change, min_interval_ms)
         self._value = value  # type: ignore[assignment]
+        self._min = self._max = self._step = None
+        self.set_range(min, max, step)
+        self._mode = Mode.AUTO
+        self.mode = Mode.AUTO if mode is None else mode
+
+    @property
+    def min(self) -> T | None:
+        return self._min
+
+    @property
+    def max(self) -> T | None:
+        return self._max
+
+    @property
+    def step(self) -> T | None:
+        return self._step
+
+    def set_range(self, min: T | None, max: T | None, step: T | None = None) -> None:
+        """The values a host may set: within ``min`` and ``max``, on ``step`` if given.
+        ``set_range(None, None)`` lifts the range. The value held is left as it is."""
         if (min is None) != (max is None):
             raise ValueError("a range has both min and max, or neither")
         if step is not None and min is None:
             raise ValueError("a step needs a range")
-        self.min = self._bound(min, "min")
-        self.max = self._bound(max, "max")
-        self.step = self._bound(step, "step")
-        if self.min is not None and not self.min < self.max:
+        new = (self._bound(min, "min"), self._bound(max, "max"), self._bound(step, "step"))
+        if new[0] is not None and not new[0] < new[1]:
             raise ValueError("min must be below max")
-        if self.step is not None and not self.step > 0:
+        if new[2] is not None and not new[2] > 0:
             raise ValueError("step must be above 0")
-        self.mode = _enum(mode, Mode, "mode") if mode is not None else Mode.AUTO
-        if self.mode not in _NUMBER_MODES:
-            raise ValueError(f"a number input's mode is auto, box or slider, not {self.mode}")
+        if new != (self._min, self._max, self._step):
+            self._min, self._max, self._step = new
+            self._device._catalog_changed()
+
+    @property
+    def mode(self) -> Mode:
+        """auto, box or slider."""
+        return self._mode
+
+    @mode.setter
+    def mode(self, mode: Mode | str) -> None:
+        mode = _enum(mode, Mode, "mode")
+        if mode not in _NUMBER_MODES:
+            raise ValueError(f"a number input's mode is auto, box or slider, not {mode}")
+        if mode != self._mode:
+            self._mode = mode
+            self._device._catalog_changed()
 
     def _bound(self, value, what) -> Any:
         if value is None:
@@ -381,10 +499,23 @@ class TextInput(_Input[str]):
         if isinstance(max_length, bool) or not isinstance(max_length, int) or not 0 <= max_length <= 255:
             raise ValueError("max_length is 0 to 255 bytes")
         self.max_length = max_length
-        self.mode = _enum(mode, Mode, "mode") if mode is not None else Mode.PLAIN
-        if self.mode not in _TEXT_MODES:
-            raise ValueError(f"a text input's mode is plain or password, not {self.mode}")
+        self._mode = Mode.PLAIN
+        self.mode = Mode.PLAIN if mode is None else mode
         self._value = _check_text(initial, max_length)
+
+    @property
+    def mode(self) -> Mode:
+        """plain or password."""
+        return self._mode
+
+    @mode.setter
+    def mode(self, mode: Mode | str) -> None:
+        mode = _enum(mode, Mode, "mode")
+        if mode not in _TEXT_MODES:
+            raise ValueError(f"a text input's mode is plain or password, not {mode}")
+        if mode != self._mode:
+            self._mode = mode
+            self._device._catalog_changed()
 
     def _check(self, value):
         return _check_text(value, self.max_length)

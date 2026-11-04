@@ -477,3 +477,71 @@ def test_a_decorator_given_its_function_before_begin_is_no_mistake():
     assert ack_reason(device, port, "<Reset>") == 0
     assert ack_reason(device, port, "<MOTOR,1>") == 0
     assert pressed == ["Reset", "MOTOR"]
+
+
+def entity_lists_after_tick(device, port):
+    from blaeckpy.protocol import envelope
+    port.outgoing.clear()
+    device.tick()
+    frames = [envelope.open_frame(f + b"/>\n") for f in bytes(port.outgoing).split(b"/>\n")[:-1]]
+    return [f for f in frames if f.key == 0x90]
+
+
+def test_a_setting_changed_after_begin_sends_the_entity_list_again_and_only_once():
+    device, port = Blaeck(), Port()
+    output = device.add_sensor("Output", 0.0, icon="mdi:sine-wave")
+    speed = device.add_number_input("Speed", 0, min=0, max=10)
+    button = device.add_button("Reset", lambda: None)
+    device.begin(port)
+    port.incoming += b"<BLAECK.ENTITIES_START>"
+    device.tick()
+    assert entity_lists_after_tick(device, port) == []
+
+    output.icon = "mdi:square-wave"
+    lists = entity_lists_after_tick(device, port)
+    assert len(lists) == 1 and b"mdi:square-wave" in lists[0].fields
+    output.icon = "mdi:square-wave"
+    assert entity_lists_after_tick(device, port) == []
+
+    speed.set_range(0, 20, 2)
+    button.display_name = "Reset all"
+    assert len(entity_lists_after_tick(device, port)) == 1
+    assert (speed.min, speed.max, speed.step) == (0, 20, 2)
+
+
+def test_a_changed_setting_is_checked_as_add_does_and_a_refused_one_keeps_the_old():
+    device = Blaeck()
+    speed = device.add_number_input("Speed", 0, min=0, max=10)
+    label = device.add_text_input("Label")
+    with pytest.raises(ValueError):
+        speed.set_range(10, 0)
+    with pytest.raises(TypeError):
+        speed.set_range(0, 1.5)
+    assert (speed.min, speed.max) == (0, 10)
+    with pytest.raises(ValueError):
+        speed.mode = "password"
+    with pytest.raises(TypeError):
+        label.unit = "V"
+    with pytest.raises(ValueError):
+        label.icon = "mdi:\ntag"
+    label.mode = "password"
+    assert label.mode is Mode.PASSWORD
+
+
+def test_a_signals_policies_and_unit_change_while_running():
+    from blaeckpy import OFF, OnChange
+    device = Blaeck()
+    flow = device.add_signal("Flow", 0.0, unit="l/min")
+    flow.write_on_change = 0.5
+    flow.min_interval_ms = 250
+    assert (flow.write_on_change, flow._reporting.min_interval_ms) == (0.5, 250)
+    flow.write_on_change = None
+    flow.write_at_interval = OFF
+    assert flow._reporting is None
+    flow.write_at_interval = OnChange(1.0)
+    assert flow._reporting.interval_delta == 1.0
+    flow.unit = None
+    assert flow.unit == ""
+    with pytest.raises(TypeError):
+        flow.write_at_interval = "OFF"
+

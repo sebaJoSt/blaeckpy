@@ -5,10 +5,11 @@ from __future__ import annotations
 import time
 from collections.abc import Callable, Sequence
 
+from ._properties import _Presented
 from .protocol import frames
 
 
-class Event:
+class Event(_Presented):
     """A moment the device reports, of one of a closed list of types."""
 
     def __init__(self, device, device_id: int, name: str, types: Sequence[str], presentation):
@@ -37,7 +38,7 @@ class Event:
         self._device._catalog_changed()
 
     def write(self, type_: str) -> None:
-        """Reports the event now. While entities are stopped it is lost, as in blaeck."""
+        """Reports the event now. While entities are stopped it is lost."""
         if self._removed:
             raise RuntimeError(f"event {self.name!r} was removed by clear_all_events()")
         if type_ not in self.types:
@@ -50,12 +51,13 @@ class Event:
                                   **self._presentation.entry_args())
 
 
-class Button:
+class Button(_Presented):
     """A moment a host triggers by sending the button's name. A press carries no value."""
 
-    def __init__(self, device_id: int, name: str, press: Callable[[], None], presentation):
+    def __init__(self, device, device_id: int, name: str, press: Callable[[], None], presentation):
         if not callable(press):
             raise TypeError("a button needs a function to call when it is pressed")
+        self._device = device
         self.device_id = device_id
         self.name = name
         self.press = press

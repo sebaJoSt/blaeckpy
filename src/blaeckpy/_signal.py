@@ -34,7 +34,7 @@ OFF = _Mode("OFF")
 
 
 def check_delta(delta: object, what: str = "a change threshold") -> float:
-    """A change threshold: a number, 0 or above and finite, as blaeck takes one."""
+    """A change threshold: a number, 0 or above and finite."""
     if isinstance(delta, bool) or not isinstance(delta, (int, float)):
         raise TypeError(f"{what} is a number, not {delta!r}")
     delta = float(delta)
@@ -169,24 +169,78 @@ class Signal[T: (bool, int, float, str)]:
         self.type: type[T] = type_
         self.dtype = _DTYPES[type_]
         self._value: T = value
-        if write_at_interval is not ALWAYS and write_at_interval is not OFF \
-                and not isinstance(write_at_interval, OnChange):
-            raise TypeError("write_at_interval is ALWAYS, OFF or OnChange(delta)")
-        self.interval_mode = write_at_interval
-        # Only a policy that compares keeps a baseline, as in blaeck.
+        # Only a policy that compares keeps a baseline.
         self._reporting: _Reporting | None = None
-        if isinstance(write_at_interval, OnChange):
-            self._ensure_reporting().interval_delta = float(write_at_interval.delta)
-        if write_on_change is not None:
-            r = self._ensure_reporting()
-            r.immediate = True
-            r.change_delta = check_delta(write_on_change, "write_on_change")
-            r.min_interval_ms = int(min_interval_ms)
+        self.interval_mode: _Mode | OnChange = ALWAYS
+        self._min_interval_ms = 100
+        self.min_interval_ms = min_interval_ms
+        self.write_at_interval = write_at_interval
+        self.write_on_change = write_on_change
 
     def _ensure_reporting(self) -> _Reporting:
         if self._reporting is None:
             self._reporting = _Reporting()
+            self._reporting.min_interval_ms = self._min_interval_ms
         return self._reporting
+
+    def _drop_unused_reporting(self) -> None:
+        r = self._reporting
+        if r is not None and not r.immediate and not isinstance(self.interval_mode, OnChange):
+            self._reporting = None
+
+    @property
+    def unit(self) -> str:
+        """The unit, "" for none. A host learns of a new one from the next data frame."""
+        return self._unit
+
+    @unit.setter
+    def unit(self, unit: str | None) -> None:
+        self._unit = check_unit(unit)
+
+    @property
+    def write_at_interval(self) -> _Mode | OnChange:
+        """ALWAYS, OFF or OnChange(delta): whether the signal is in an interval report."""
+        return self.interval_mode
+
+    @write_at_interval.setter
+    def write_at_interval(self, mode: _Mode | OnChange) -> None:
+        if mode is not ALWAYS and mode is not OFF and not isinstance(mode, OnChange):
+            raise TypeError("write_at_interval is ALWAYS, OFF or OnChange(delta)")
+        self.interval_mode = mode
+        if isinstance(mode, OnChange):
+            self._ensure_reporting().interval_delta = float(mode.delta)
+        self._drop_unused_reporting()
+
+    @property
+    def write_on_change(self) -> float | None:
+        """How far the value moves before it goes out at once; None for not at once."""
+        r = self._reporting
+        return r.change_delta if r is not None and r.immediate else None
+
+    @write_on_change.setter
+    def write_on_change(self, delta: float | None) -> None:
+        if delta is None:
+            if self._reporting is not None:
+                self._reporting.immediate = False
+            self._drop_unused_reporting()
+            return
+        delta = check_delta(delta, "write_on_change")
+        r = self._ensure_reporting()
+        r.immediate = True
+        r.change_delta = delta
+
+    @property
+    def min_interval_ms(self) -> int:
+        """The least time between two sends of a change."""
+        return self._min_interval_ms
+
+    @min_interval_ms.setter
+    def min_interval_ms(self, ms: int) -> None:
+        if isinstance(ms, bool) or not isinstance(ms, int) or ms < 0:
+            raise ValueError(f"min_interval_ms is a whole number of milliseconds, 0 or above, not {ms!r}")
+        self._min_interval_ms = ms
+        if self._reporting is not None:
+            self._reporting.min_interval_ms = ms
 
     @property
     def value(self) -> T:
