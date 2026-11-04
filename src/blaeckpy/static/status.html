@@ -121,7 +121,8 @@
   })();
 
   // -- Rendering --
-  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  // Also for an attribute: innerHTML leaves quotes as they are.
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML.replace(/"/g, '&quot;'); }
   // Only touch what changed: rewriting the same text would still clear a selection in it.
   function setText(id, v) {
     var el = document.getElementById(id);
