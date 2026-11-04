@@ -691,15 +691,6 @@ def test_a_frame_the_port_takes_in_parts_goes_out_whole_and_a_stalled_one_is_sen
     device.tick()
     assert [f.values for f in data_frames(port)][-1] == {0: 2.0}
 
-def test_a_step_finer_than_a_thousandth_keeps_its_decimals():
-    device, port = Blaeck(), Port()
-    fine = device.add_number_input("Fine", 0.01, min=0.01, max=0.02, step=0.0001)
-    device.begin(port)
-    assert ack_reason(device, port, "<Fine,0.015>") == 0
-    assert fine.value == 0.015
-    assert ack_reason(device, port, "<Fine,0.0123>") == 0
-    assert fine.value == 0.0123
-
 
 def test_device_notices_that_did_not_go_out_are_sent_once_the_port_recovers(monkeypatch):
     from blaeckpy import _transport
@@ -744,9 +735,18 @@ def test_a_closed_device_cannot_begin():
     with pytest.raises(RuntimeError, match="closed"):
         device.begin(Port())
 
-def test_a_step_from_a_minimum_with_more_decimals_keeps_the_minimum_s_decimals():
+
+@pytest.mark.parametrize("low, high, step, sent", [
+    (1.0001, 1.1001, 0.1, 1.0001),
+    (1.0001, 1.1001, 0.1, 1.1001),
+    (0.05, 0.15, 0.1, 0.15),
+    (0.01, 0.02, 0.0001, 0.015),
+    (0.0, 1.0, 0.1, 0.3),
+    (-1.25, 1.25, 0.25, -0.75),
+])
+def test_a_value_on_a_step_is_stored_as_the_decimal_sent_and_never_leaves_the_range(low, high, step, sent):
     device, port = Blaeck(), Port()
-    value = device.add_number_input("FromMin", 0.05, min=0.05, max=0.15, step=0.1)
+    value = device.add_number_input("Value", low, min=low, max=high, step=step)
     device.begin(port)
-    assert ack_reason(device, port, "<FromMin,0.15>") == 0
-    assert value.value == 0.15
+    assert ack_reason(device, port, f"<Value,{sent!r}>") == 0
+    assert value.value == sent

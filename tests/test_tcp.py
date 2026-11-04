@@ -250,6 +250,7 @@ def test_closing_from_on_disconnect_while_a_host_is_replaced_ends_tick_quietly(s
     pump(device, [a, b])
     assert a.closed and b.closed
 
+
 def test_closing_from_on_disconnect_when_a_notice_fails_ends_tick_quietly(server):
     import struct
     device = Blaeck("Bench")

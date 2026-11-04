@@ -201,13 +201,14 @@ def _parse_whole(text: str) -> int | None:
 
 
 def _step_decimals(step: float) -> int | None:
-    """The decimals a step has, or None if it has more than six. Scaled to a whole number of at
-    least 1: 0.0001 is within a thousandth of 0, but has four decimals, not none."""
+    """The decimals a step has, or None if it has more than six. The first scaling that is a
+    whole number of at least 1 to within what a double carries: 0.0001 is near 0 but has four
+    decimals, 1.0001 is near 1 but has four too."""
     scale = 1.0
     for decimals in range(7):
         scaled = step * scale
         whole = math.floor(scaled + 0.5)
-        if whole >= 1 and abs(scaled - whole) < 1e-3:
+        if whole >= 1 and abs(scaled - whole) <= 1e-9 * scaled:
             return decimals
         scale *= 10.0
     return None
@@ -433,7 +434,10 @@ class NumberInput[T: (int, float)](_Input[T]):
                 for _ in range(decimals or 0):
                     scale *= 10.0
                 if decimals is not None and abs(snapped) * scale < 1e15:
-                    snapped = math.floor(abs(snapped) * scale + 0.5) / scale * (-1.0 if snapped < 0.0 else 1.0)
+                    rounded = math.floor(abs(snapped) * scale + 0.5) / scale * (-1.0 if snapped < 0.0 else 1.0)
+                    # Rounding only removes the arithmetic's noise; never leaves the range.
+                    if high is None or low <= rounded <= high:
+                        snapped = rounded
                 number = snapped
         self._value = number  # type: ignore[assignment]
         return OK
