@@ -118,7 +118,8 @@ A few things to know:
   feed values from another thread, hand them over, with a `queue.Queue` say, and set them in the
   loop.
 - **Time is in seconds** unless a name says otherwise: `tick(timeout=0.1)`, but
-  `min_interval_ms=1000`.
+  `min_interval_ms=1000`. Timestamps are the exception: `tick(timestamp=)`, `write_all(timestamp)`
+  and `clock=` are in microseconds, as they are on the wire.
 - **The device list names blaeckpy** and its own version, so Loggbok and error reports show which
   library a device runs.
 - **A command may be up to 1023 characters:** room for a 255-byte text, the most Home Assistant holds, even with every byte percent-encoded. The device
@@ -130,8 +131,12 @@ A few things to know:
 it (`NO_COLOR` turns it off):
 
 ```
-blaeckpy v1.0.0: 'Bench' listening on TCP 0.0.0.0:2323
-Status page: http://127.0.0.1:8080
+blaeckpy v1.0.0: 'Bench' listening on all addresses (0.0.0.0)
+  TCP 127.0.0.1:2323
+  TCP 192.168.1.20:2323
+Status page:
+  http://127.0.0.1:8080
+  http://192.168.1.20:8080
 Client 0 connected: 192.168.1.20:51234
 ```
 

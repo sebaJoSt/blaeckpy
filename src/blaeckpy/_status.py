@@ -2,7 +2,7 @@
 refreshed every second. On by default, at http://<computer>:8080.
 
 The HTTP server runs on a thread of its own, but never touches the device: tick() builds a
-snapshot about once a second, on the script's thread, and the server only hands out the latest.
+snapshot about twice a second, on the script's thread, and the server only hands out the latest.
 A sensor's get= is read for it only while the page is open, so nobody looking costs nothing.
 """
 
