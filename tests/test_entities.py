@@ -743,6 +743,11 @@ def test_a_closed_device_cannot_begin():
     (0.01, 0.02, 0.0001, 0.015),
     (0.0, 1.0, 0.1, 0.3),
     (-1.25, 1.25, 0.25, -0.75),
+    (1000000.0001, 1000001.0001, 0.1, 1000000.1001),
+    (1.0000000001, 2.0000000001, 0.1, 1.1000000001),
+    (0.05, 0.050001, 0.0000001, 0.050001),
+    (0.0, 1.0, 5e-324, 0.5),
+    (-1e308, 1e308, 1.0, 1e308),
 ])
 def test_a_value_on_a_step_is_stored_as_the_decimal_sent_and_never_leaves_the_range(low, high, step, sent):
     device, port = Blaeck(), Port()
@@ -750,3 +755,16 @@ def test_a_value_on_a_step_is_stored_as_the_decimal_sent_and_never_leaves_the_ra
     device.begin(port)
     assert ack_reason(device, port, f"<Value,{sent!r}>") == 0
     assert value.value == sent
+
+
+@pytest.mark.parametrize("low, high, step, sent, expected", [
+    (0.0, 0.299999, 0.1, 0.299999, 0.299999),
+    (-1.0, -0.700001, 0.1, -0.700001, -0.700001),
+    (0.0, 1.0, 0.1, 0.30000000000000004, 0.3),
+])
+def test_a_near_step_is_snapped_only_if_the_result_fits_the_range(low, high, step, sent, expected):
+    device, port = Blaeck(), Port()
+    value = device.add_number_input("Value", low, min=low, max=high, step=step)
+    device.begin(port)
+    assert ack_reason(device, port, f"<Value,{sent!r}>") == 0
+    assert value.value == expected

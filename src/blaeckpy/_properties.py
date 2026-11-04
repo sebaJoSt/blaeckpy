@@ -7,6 +7,7 @@ import math
 import re
 from collections.abc import Callable, Sequence
 from enum import StrEnum
+from fractions import Fraction
 from typing import Any, overload
 
 from ._signal import ANY_CHANGE, Signal, _Reporting, changed, check_delta, check_unit, checked, type_and_value
@@ -198,30 +199,6 @@ def _parse_whole(text: str) -> int | None:
     not fit."""
     value = int(text)
     return value if INT64_MIN <= value <= INT64_MAX else None
-
-
-def _step_decimals(step: float) -> int | None:
-    """The decimals a step has, or None if it has more than six. The first scaling that is a
-    whole number of at least 1 to within what a double carries: 0.0001 is near 0 but has four
-    decimals, 1.0001 is near 1 but has four too."""
-    scale = 1.0
-    for decimals in range(7):
-        scaled = step * scale
-        whole = math.floor(scaled + 0.5)
-        if whole >= 1 and abs(scaled - whole) <= 1e-9 * scaled:
-            return decimals
-        scale *= 10.0
-    return None
-
-
-def _snap_decimals(low: float, step: float) -> int | None:
-    """The decimals of min + n * step: the step's or the minimum's, whichever has more. 0.05 with
-    a step of 0.1 lands on 0.15, which a step's one decimal would round to 0.2."""
-    step_decimals = _step_decimals(step)
-    low_decimals = 0 if low == 0 else _step_decimals(abs(low))
-    if step_decimals is None or low_decimals is None:
-        return None
-    return max(step_decimals, low_decimals)
 
 
 class Property[T](_Presented):
@@ -424,21 +401,15 @@ class NumberInput[T: (int, float)](_Input[T]):
         if low is not None and high is not None and not low <= number <= high:
             return OUT_OF_RANGE
         if step is not None:
-            assert low is not None  # a step needs a range
-            steps = (number - low) / step
-            nearest = math.floor(steps + 0.5)
-            if abs(steps - nearest) < 1e-3:
-                snapped = float(low + nearest * step)
-                decimals = _snap_decimals(float(low), float(step))
-                scale = 1.0
-                for _ in range(decimals or 0):
-                    scale *= 10.0
-                if decimals is not None and abs(snapped) * scale < 1e15:
-                    rounded = math.floor(abs(snapped) * scale + 0.5) / scale * (-1.0 if snapped < 0.0 else 1.0)
-                    # Rounding only removes the arithmetic's noise; never leaves the range.
-                    if high is None or low <= rounded <= high:
-                        snapped = rounded
-                number = snapped
+            assert low is not None and high is not None  # a step needs a range
+            # Keep the decimal grid exact until the final conversion to a double.
+            origin, increment = Fraction(str(low)), Fraction(str(step))
+            steps = (Fraction(str(number)) - origin) / increment
+            nearest = round(steps)
+            if abs(steps - nearest) < Fraction(1, 1000):
+                snapped = origin + nearest * increment
+                if origin <= snapped <= Fraction(str(high)):
+                    number = float(snapped)
         self._value = number  # type: ignore[assignment]
         return OK
 
