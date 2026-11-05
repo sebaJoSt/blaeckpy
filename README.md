@@ -100,7 +100,7 @@ Everything a script declares on the board it can also declare on a sub-device.
 | `add_device(name)`, `mark_missing()`, `mark_present()`, `write_restarted()` | A second board shown as its own device |
 | `unit=`, `icon=`, `device_class=`, `category=Category.CONFIG`, ... | How a host shows it |
 | `sensor.icon = ...`, `input.set_range(0, 20)`, `signal.write_on_change = 0.5`, ... | The same, changed while running; a host gets the new entity list |
-| `@device.on_data_start`, `@device.on_interval_start`, ... | Following what the host switches on and off |
+| `@device.on_data_start`, `@device.on_interval_start`, ... | Following what the host switches on and off; `on_interval_start` gets the interval in ms, the others get nothing |
 | `@device.on_connect`, `@device.on_disconnect` | TCP connections, with `(client_no, address)` |
 | `device.terminal.print(...)` | Text for whoever looks into the running device |
 | `set_timestamp_mode(TimestampMode.MICROS)` | Timestamps in data frames |

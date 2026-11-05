@@ -475,21 +475,27 @@ class Blaeck(_DeviceBase):
         return fn
 
     def on_data_start[F: Callable](self, fn: F) -> F:
+        """``fn()`` when a host starts data."""
         return self._register("data_start", fn)
 
     def on_data_stop[F: Callable](self, fn: F) -> F:
+        """``fn()`` when a host stops data."""
         return self._register("data_stop", fn)
 
     def on_interval_start[F: Callable](self, fn: F) -> F:
+        """``fn(interval_ms)`` when a host starts the interval."""
         return self._register("interval_start", fn)
 
     def on_interval_stop[F: Callable](self, fn: F) -> F:
+        """``fn()`` when a host stops the interval."""
         return self._register("interval_stop", fn)
 
     def on_entities_start[F: Callable](self, fn: F) -> F:
+        """``fn()`` when a host starts entities."""
         return self._register("entities_start", fn)
 
     def on_entities_stop[F: Callable](self, fn: F) -> F:
+        """``fn()`` when a host stops entities."""
         return self._register("entities_stop", fn)
 
     def _call(self, key: str, *args) -> None:
