@@ -282,6 +282,8 @@ class Blaeck(_DeviceBase):
         self.hw_version = check_text(hw_version, "hw_version")
         self.fw_version = check_text(fw_version, "fw_version")
         self._signals: list[Signal] = []
+        self._hash_signature: list | None = None
+        self._hash = 0
         self._transport: _transport.StreamTransport | _transport.TcpTransport | None = None
         self._clock = _clock.Clock()
         self.terminal = Terminal(self)
@@ -455,6 +457,10 @@ class Blaeck(_DeviceBase):
     def _clear_properties(self, writable: bool) -> None:
         kept = [p for p in self._properties if p.writable != writable]
         if len(kept) != len(self._properties):
+            for prop in self._properties:
+                if prop.writable == writable:
+                    prop._removed = True
+                    prop._cleared_by = "clear_all_controls" if writable else "clear_all_sensors"
             self._properties[:] = kept
             self._catalog_changed()
 
@@ -1045,8 +1051,8 @@ class Blaeck(_DeviceBase):
         selected, interval_report = [], False
         for s in self._signals:
             r = s._reporting
-            interval = due and (s.interval_mode is ALWAYS or (
-                isinstance(s.interval_mode, OnChange) and r is not None
+            interval = due and (s._interval_mode is ALWAYS or (
+                isinstance(s._interval_mode, OnChange) and r is not None
                 and (initial or changed(s.type, s.value, r, r.interval_delta))))
             immediate = (r is not None and r.immediate
                          and (not r.valid or change_now - r.last_write_ms >= r.min_interval_ms)
@@ -1077,9 +1083,12 @@ class Blaeck(_DeviceBase):
         ordered = self._ordered_signals()
         values = [(i, s.dtype, s.value) for i, s in enumerate(ordered) if id(s) in chosen]
         has_ts = self._timestamp_mode is not TimestampMode.NONE
-        hash_ = schema_hash([(None if s.device_id == 0 else self._devices[s.device_id - 1].name,
-                              s.name, s.unit, s.dtype) for s in ordered])
-        if not self._send(frames.data(values, schema_hash=hash_, flags=flags,
+        # The hash takes longer than the rest of the frame, and the signals rarely change.
+        signature = [(None if s.device_id == 0 else self._devices[s.device_id - 1].name,
+                      s.name, s.unit, s.dtype) for s in ordered]
+        if signature != self._hash_signature:
+            self._hash_signature, self._hash = signature, schema_hash(signature)
+        if not self._send(frames.data(values, schema_hash=self._hash, flags=flags,
                                       timestamp_mode=_clock.WIRE[self._timestamp_mode],
                                       timestamp=timestamp if has_ts else None, message_id=msg_id)):
             return

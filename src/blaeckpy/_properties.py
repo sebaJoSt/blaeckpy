@@ -206,6 +206,8 @@ class Property[T](_Presented):
 
     kind: ValueKind
     writable = False
+    # The clear_all_...() that removed it, for the error if the script still writes it.
+    _cleared_by = ""
     _value: T
     force_update = _Shown[bool]()
     unit = _Shown[str | None]()
@@ -215,6 +217,7 @@ class Property[T](_Presented):
     def __init__(self, device, device_id: int, name: str, dtype: DType, presentation: Presentation,
                  write_on_change: float, min_interval_ms: int):
         self._device = device
+        self._removed = False
         self.device_id = device_id
         self.name = name
         self.dtype = dtype
@@ -259,6 +262,8 @@ class Property[T](_Presented):
 
     def write(self) -> None:
         """Sends the value now, changed or not."""
+        if self._removed:
+            raise RuntimeError(f"{self.name!r} was removed by {self._cleared_by}()")
         self._device._write_property_frame(self)
 
     def _entry_kwargs(self) -> dict:
@@ -463,28 +468,33 @@ class Select(_Input[int]):
 
     def __init__(self, device, device_id, name, index, *, options, presentation, min_interval_ms):
         super().__init__(device, device_id, name, DType.BYTE, presentation, ANY_CHANGE, min_interval_ms)
-        self.options = _check_options(options)
-        self._value = _check_index(self.options, index)
+        self._options = _check_options(options)
+        self._value = _check_index(self._options, index)
 
     def _check(self, value):
-        return _check_index(self.options, value)
+        return _check_index(self._options, value)
 
     @property
     def option(self) -> str:
         """The selected option's name."""
-        return self.options[self._value]
+        return self._options[self._value]
 
     def _entry_kwargs(self) -> dict:
-        return dict(self._presentation.property_args(), options=self.options)
+        return dict(self._presentation.property_args(), options=self._options)
+
+    @property
+    def options(self) -> tuple[str, ...]:
+        """The options, fixed when the select was declared."""
+        return tuple(self._options)
 
     def _accept(self, text: str) -> int:
-        if text in self.options:
-            index = self.options.index(text)
+        if text in self._options:
+            index = self._options.index(text)
         elif _SELECT_INDEX.fullmatch(text):
             index = int(text)
         else:
             return BAD_SELECT
-        if not 0 <= index < len(self.options):
+        if not 0 <= index < len(self._options):
             return BAD_SELECT
         self._value = index
         return OK
@@ -505,7 +515,7 @@ class TextInput(_Input[str]):
         super().__init__(device, device_id, name, DType.TEXT, presentation, ANY_CHANGE, min_interval_ms)
         if isinstance(max_length, bool) or not isinstance(max_length, int) or not 0 <= max_length <= 255:
             raise ValueError("max_length is 0 to 255 bytes")
-        self.max_length = max_length
+        self._max_length = max_length
         self._mode = Mode.PLAIN
         self.mode = Mode.PLAIN if mode is None else mode
         self._value = _check_text(initial, max_length)
@@ -524,15 +534,20 @@ class TextInput(_Input[str]):
             self._mode = mode
             self._device._catalog_changed()
 
+    @property
+    def max_length(self) -> int:
+        """The most bytes the text holds, fixed when the input was declared."""
+        return self._max_length
+
     def _check(self, value):
-        return _check_text(value, self.max_length)
+        return _check_text(value, self._max_length)
 
     def _entry_kwargs(self) -> dict:
-        return dict(self._presentation.property_args(), text_max_len=self.max_length,
+        return dict(self._presentation.property_args(), text_max_len=self._max_length,
                     mode=_TEXT_MODES[self.mode])
 
     def _accept(self, text: str) -> int:
-        if len(text.encode("utf-8", "surrogateescape")) > self.max_length:
+        if len(text.encode("utf-8", "surrogateescape")) > self._max_length:
             return TOO_LONG
         self._value = text
         return OK
@@ -549,15 +564,15 @@ class Sensor[T: (bool, int, float, str)](Property[T]):
         self._get: Callable[[], object] | None = None
         self._get_failing = False
         self._read_pass: int | None = None
-        self.options: list[str] | None = None
+        self._options: list[str] | None = None
         value = None
         if options is not None:
             # An enum sensor holds the index of an option: add_sensor("Phase", 0, options=[...]).
             if get is not None or isinstance(source, (Signal, type)) or initial is not None:
                 raise TypeError("an enum sensor takes its starting index alone")
-            self.options = _check_options(options)
+            self._options = _check_options(options)
             type_, dtype, kind = int, DType.BYTE, ValueKind.ENUM
-            value = _check_index(self.options, source)
+            value = _check_index(self._options, source)
         elif isinstance(source, Signal):
             if initial is not None or get is not None:
                 raise TypeError("a sensor that shows a signal takes nothing else")
@@ -607,6 +622,11 @@ class Sensor[T: (bool, int, float, str)](Property[T]):
         self._read_pass = None
         super().write()
 
+    @property
+    def options(self) -> tuple[str, ...] | None:
+        """An enum sensor's options, fixed when it was declared; None for any other sensor."""
+        return None if self._options is None else tuple(self._options)
+
     def _read_get(self) -> T:
         assert self._get is not None
         return checked(self.type, self._get(), "value from get=")
@@ -624,15 +644,15 @@ class Sensor[T: (bool, int, float, str)](Property[T]):
             self._signal.value = value
         elif self._get is not None:
             raise AttributeError("a sensor with get= reads its function; it has no value to set")
-        elif self.options is not None:
-            self._value = _check_index(self.options, value)  # type: ignore[assignment]
+        elif self._options is not None:
+            self._value = _check_index(self._options, value)  # type: ignore[assignment]
         else:
             self._value = checked(self.type, value)
 
     def _entry_kwargs(self) -> dict:
         args = self._presentation.property_args()
-        if self.options is not None:
-            args["options"] = self.options
+        if self._options is not None:
+            args["options"] = self._options
         if self.kind is ValueKind.TEXT:
             # A Python text has no buffer: it declares the most a text holds.
             args["text_max_len"] = 255

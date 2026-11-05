@@ -87,14 +87,15 @@ def _percent_decode(data: bytes) -> bytes:
     i = 0
     hexdigits = b"0123456789abcdefABCDEF"
     while i < len(data):
-        if data[i] == 0x25 and i + 2 < len(data) \
+        # %00 stays as it is: a null byte would end the value there, silently.
+        if data[i] == 0x25 and i + 2 < len(data) and data[i + 1:i + 3] != b"00" \
                 and data[i + 1] in hexdigits and data[i + 2] in hexdigits:
             out.append(int(data[i + 1:i + 3], 16))
             i += 3
         else:
             out.append(data[i])
             i += 1
-    # blaeck decodes into a C string, which a decoded NUL ends.
+    # A raw null byte ends the value.
     nul = out.find(0)
     return bytes(out if nul < 0 else out[:nul])
 

@@ -176,7 +176,7 @@ class Signal[T: (bool, int, float, str)]:
         self._value: T = value
         # Only a policy that compares keeps a baseline.
         self._reporting: _Reporting | None = None
-        self.interval_mode: _Mode | OnChange = ALWAYS
+        self._interval_mode: _Mode | OnChange = ALWAYS
         self._min_interval_ms = 100
         self.min_interval_ms = min_interval_ms
         self.write_at_interval = write_at_interval
@@ -190,7 +190,7 @@ class Signal[T: (bool, int, float, str)]:
 
     def _drop_unused_reporting(self) -> None:
         r = self._reporting
-        if r is not None and not r.immediate and not isinstance(self.interval_mode, OnChange):
+        if r is not None and not r.immediate and not isinstance(self._interval_mode, OnChange):
             self._reporting = None
 
     @property
@@ -206,13 +206,13 @@ class Signal[T: (bool, int, float, str)]:
     @property
     def write_at_interval(self) -> _Mode | OnChange:
         """ALWAYS, OFF or OnChange(delta): whether the signal is in an interval report."""
-        return self.interval_mode
+        return self._interval_mode
 
     @write_at_interval.setter
     def write_at_interval(self, mode: _Mode | OnChange) -> None:
         if mode is not ALWAYS and mode is not OFF and not isinstance(mode, OnChange):
             raise TypeError("write_at_interval is ALWAYS, OFF or OnChange(delta)")
-        self.interval_mode = mode
+        self._interval_mode = mode
         if isinstance(mode, OnChange):
             self._ensure_reporting().interval_delta = float(mode.delta)
         self._drop_unused_reporting()

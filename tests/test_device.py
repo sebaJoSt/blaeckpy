@@ -119,7 +119,7 @@ def test_a_change_threshold_is_0_or_above_and_finite(delta):
 @pytest.mark.parametrize(
     "raw, params",
     [(b"Label, Hallway %20", ["Hallway"]), (b"Label,%09a b%0D%0A", ["a b"]), (b"X, ,y", ["", "y"]),
-     (b"X,a%2Cb", ["a,b"]), (b"X,a%00b", ["a"])],
+     (b"X,a%2Cb", ["a,b"]), (b"X,a%00b", ["a%00b"])],
 )
 def test_parameters_are_decoded_then_trimmed(raw, params):
     from blaeckpy._commands import parse

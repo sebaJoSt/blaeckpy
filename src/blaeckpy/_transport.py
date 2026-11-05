@@ -66,7 +66,14 @@ class StreamTransport:
         _SEND_TIMEOUT while the port takes nothing. False if the port never took it all."""
         stalled_since = None
         while data:
-            n = self.port.write(data)
+            try:
+                n = self.port.write(data)
+            except Exception as e:
+                # pyserial with a write_timeout raises this when the host stops reading. The port
+                # is fine, so like a port that takes nothing it is told by returning False.
+                if any(c.__name__ in ("SerialTimeoutException", "TimeoutError") for c in type(e).__mro__):
+                    return False
+                raise
             if n is None:  # a port that doesn't count took it all
                 return True
             if n > 0:

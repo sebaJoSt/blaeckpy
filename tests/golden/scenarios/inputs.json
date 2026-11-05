@@ -47,6 +47,9 @@
     {"tick": true},
     {"command": "<>"},
     {"command": "<,5>"},
-    {"command": "<#7:>"}
+    {"command": "<#7:>"},
+    {"command": "<Label,ab%00cd>"},
+    {"command": "<Label,%00>"},
+    {"command": "<Label,%61>"}
   ]
 }

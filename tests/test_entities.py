@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from blaeckpy import Blaeck, Category, Mode
+from blaeckpy import Blaeck, Category, Mode, OnChange
 from blaeckpy.protocol import _decode
 
 
@@ -956,4 +956,119 @@ def test_an_interval_started_before_data_doesnt_run_on_before_write_until_data_c
     assert calls == [1]
     frames = _decode.Decoder().feed(bytes(port.outgoing))
     assert any(isinstance(f, _decode.Frame) and f.key == 0xD3 for f in frames)
+    device.close()
+
+
+def test_a_percent_00_stays_as_it_is_and_a_null_byte_still_ends_a_value():
+    device, port = Blaeck(), Port()
+    label = device.add_text_input("Label")
+    device.begin(port)
+    assert ack_reason(device, port, "<Label,ab%00cd>") == 0 and label.value == "ab%00cd"
+    assert ack_reason(device, port, "<Label,%41%4a>") == 0 and label.value == "AJ"
+    assert ack_reason(device, port, "<Label,ab\x00cd>") == 0 and label.value == "ab"
+    device.close()
+
+
+@pytest.mark.parametrize("error_name", ["SerialTimeoutException", "TimeoutError"])
+def test_a_port_that_times_out_on_a_write_doesnt_stop_the_device(error_name):
+    error = type(error_name, (OSError,), {})
+
+    class TimingOutPort(Port):
+        stalled = False
+
+        def write(self, data):
+            if self.stalled:
+                raise error("Write timeout")
+            return super().write(data)
+
+    device, port = Blaeck(), TimingOutPort()
+    device.add_signal("S", 1.0)
+    device.begin(port)
+    port.incoming += b"<BLAECK.DATA_START>"
+    device.tick()
+    port.stalled = True
+    device.write_all()
+    device.tick()
+    port.stalled = False
+    assert ack_reason(device, port, "<BLAECK.GET_DEVICES>") == 0
+    device.close()
+
+
+def test_another_port_error_is_the_scripts_to_see():
+    class BrokenPort(Port):
+        def write(self, data):
+            raise OSError("the cable is out")
+
+    device, port = Blaeck(), BrokenPort()
+    device.begin(port)
+    with pytest.raises(OSError):
+        device.terminal.print("x")
+    device.close()
+
+
+def test_options_and_max_length_are_read_only():
+    device = Blaeck()
+    select = device.add_select("Mode", 0, options=["a", "b"])
+    phase = device.add_sensor("Phase", 0, options=["x", "y"])
+    text = device.add_text_input("Note", max_length=8)
+    assert select.options == ("a", "b") and select.options[1] == "b" and select.options.index("b") == 1
+    assert phase.options == ("x", "y") and device.add_sensor("Plain", 1.0).options is None
+    assert text.max_length == 8
+    for entity, name, value in ((select, "options", ["a"]), (phase, "options", ["a"]), (text, "max_length", 5)):
+        with pytest.raises(AttributeError):
+            setattr(entity, name, value)
+    with pytest.raises(AttributeError):
+        select.options.append("c")
+
+
+def test_interval_mode_goes_through_write_at_interval():
+    device = Blaeck()
+    signal = device.add_signal("S", 1.0)
+    assert not hasattr(signal, "interval_mode")
+    signal.write_at_interval = OnChange(0.5)
+    assert signal._reporting is not None and signal.write_at_interval == OnChange(0.5)
+
+
+@pytest.mark.parametrize("clear, make", [
+    ("clear_all_controls", lambda d: d.add_switch("Sw")),
+    ("clear_all_sensors", lambda d: d.add_sensor("Se", 1.0)),
+])
+def test_write_on_a_removed_property_says_so_whether_or_not_a_host_is_listening(clear, make):
+    device, port = Blaeck(), Port()
+    prop = make(device)
+    device.begin(port)
+    getattr(device, clear)()
+    with pytest.raises(RuntimeError, match=clear):
+        prop.write()
+    assert ack_reason(device, port, "<BLAECK.ENTITIES_START>") == 0
+    with pytest.raises(RuntimeError, match=clear):
+        prop.write()
+    device.close()
+
+
+def test_the_schema_hash_is_worked_out_only_when_the_signals_changed(monkeypatch):
+    from blaeckpy import _device
+    calls, real = [], _device.schema_hash
+    monkeypatch.setattr(_device, "schema_hash", lambda s: calls.append(1) or real(s))
+    device, port = Blaeck(), Port()
+    signal = device.add_signal("S", 1.0, unit="V")
+    device.begin(port)
+
+    def hash_sent():
+        port.outgoing.clear()
+        port.incoming += b"<BLAECK.GET_DEVICES><BLAECK.WRITE_DATA>"
+        device.tick()
+        device.tick()
+        frames = _decode.Decoder().feed(bytes(port.outgoing))
+        return [f.body.schema_hash for f in frames if isinstance(f, _decode.Frame) and f.key == 0xD3][-1]
+
+    first = hash_sent()
+    count = len(calls)
+    assert count >= 1
+    for _ in range(5):
+        device.write_all()
+    assert hash_sent() == first and len([c for c in calls[count:]]) <= 1
+
+    signal.unit = "A"
+    assert hash_sent() != first
     device.close()
