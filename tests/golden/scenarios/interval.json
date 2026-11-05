@@ -28,6 +28,17 @@
     {"advance_ms": 1},
     {"command": "<BLAECK.INTERVAL_START,250>"},
     {"advance_ms": 249},
-    {"advance_ms": 1}
+    {"advance_ms": 1},
+    {"command": "<BLAECK.INTERVAL_START>"},
+    {"command": "<BLAECK.INTERVAL_START,>"},
+    {"command": "<BLAECK.INTERVAL_START,abc>"},
+    {"command": "<BLAECK.INTERVAL_START,+1000>"},
+    {"command": "<BLAECK.INTERVAL_START,-1>"},
+    {"command": "<BLAECK.INTERVAL_START,1.5>"},
+    {"command": "<BLAECK.INTERVAL_START,1e3>"},
+    {"command": "<BLAECK.INTERVAL_START,4294967296>"},
+    {"advance_ms": 250},
+    {"command": "<BLAECK.INTERVAL_START,4294967295>"},
+    {"advance_ms": 250}
   ]
 }

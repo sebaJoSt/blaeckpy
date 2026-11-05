@@ -569,13 +569,20 @@ def test_on_change_may_clear_the_controls_it_belongs_to():
     assert device._properties == []
 
 
-def test_a_huge_interval_is_capped_as_strtoul_caps_it():
-    device, port = Blaeck(), Port()
+def test_what_isnt_an_interval_is_refused_and_changes_nothing():
+    device, port, started = Blaeck(), Port(), []
     device.add_signal("S", 1.0)
+    device.on_interval_start(lambda ms: started.append(ms))
     device.begin(port)
-    port.incoming += b"<BLAECK.INTERVAL_START," + b"9" * 400 + b">"
-    device.tick(timeout=0.01)
+    assert ack_reason(device, port, "<BLAECK.INTERVAL_START,250>") == 0
+    assert started == [250]
+    for text, reason in (("", 6), (",", 6), (",abc", 11), (",+1000", 11), (",-1", 11), (",1.5", 11),
+                         (",1e3", 11), (",\u0663", 11), (",4294967296", 2), ("," + "9" * 900, 2)):
+        assert ack_reason(device, port, f"<BLAECK.INTERVAL_START{text}>") == reason
+        assert device._interval_ms == 250 and device._timed and started == [250]
+    assert ack_reason(device, port, "<BLAECK.INTERVAL_START,0004294967295>") == 0
     assert device._interval_ms == 0xFFFFFFFF
+    device.close()
 
 
 def test_after_close_on_before_write_no_longer_runs():

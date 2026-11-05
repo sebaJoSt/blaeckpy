@@ -808,10 +808,12 @@ class Blaeck(_DeviceBase):
             self._ack(cmd, _ACK_OK)
             self._send_entity_list(msg_id)
         elif name == "BLAECK.INTERVAL_START":
-            interval = _commands.parse_interval(cmd.params[0]) if cmd.params else 0
-            self._ack(cmd, _ACK_OK)
-            self._set_timed(True, interval)
-            self._call("interval_start", self._interval_ms)
+            reason, interval = _commands.parse_interval(cmd.params)
+            self._ack(cmd, reason)
+            # A value that isn't one changes nothing: an interval already running goes on.
+            if reason == _ACK_OK:
+                self._set_timed(True, interval)
+                self._call("interval_start", self._interval_ms)
         elif name == "BLAECK.INTERVAL_STOP":
             self._ack(cmd, _ACK_OK)
             self._set_timed(False, self._interval_ms)

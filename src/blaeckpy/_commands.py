@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
+from ._properties import MISSING_VALUE, NOT_A_NUMBER, OK, OUT_OF_RANGE
+
 #: Characters a command buffer holds, the terminator counted as in blaeck, so the device list
 #: advertises one less: 1023. blaeck's default is 128, a microcontroller's RAM budget that fits a
 #: 32-byte text percent-encoded; here a 255-byte text, the most Home Assistant holds, fits even
@@ -135,13 +137,12 @@ def parse(raw: bytes, overflowed: bool) -> Command:
     return cmd
 
 
-def parse_interval(text: str) -> int:
-    """The interval as blaeck reads it with strtoul: leading digits, otherwise 0, and at most
-    the largest unsigned long."""
-    text = text.lstrip(" \t\n\r\f\v")
-    digits = ""
-    for c in text:
-        if not c.isdigit() or not c.isascii():
-            break
-        digits += c
-    return min(int(digits), 0xFFFFFFFF) if digits else 0
+def parse_interval(params: list[str]) -> tuple[int, int]:
+    """BLAECK.INTERVAL_START's parameter as (ack reason, interval): plain digits, in milliseconds,
+    that fit 32 bits. Anything else is refused, and the interval means nothing then."""
+    if not params or not params[0]:
+        return MISSING_VALUE, 0
+    if not (params[0].isascii() and params[0].isdigit()):
+        return NOT_A_NUMBER, 0
+    interval = int(params[0])
+    return (OUT_OF_RANGE, 0) if interval > 0xFFFFFFFF else (OK, interval)
