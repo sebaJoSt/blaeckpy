@@ -394,3 +394,17 @@ def test_any_other_accept_error_is_the_script_s_to_see(server):
         device.tick()
     client.close()
     device.close()
+
+
+def test_a_terminals_command_with_no_name_gets_no_answer(server):
+    device = Blaeck()
+    device.begin(server)
+    host, terminal = Client(server), Client(server)
+    host.send("<BLAECK.GET_DEVICES>")
+    pump(device, [host, terminal])
+    host.buffer.clear()
+    terminal.buffer.clear()
+    terminal.send("<>")
+    pump(device, [host, terminal])
+    assert terminal.buffer == b"" and host.buffer == b""
+    device.close()

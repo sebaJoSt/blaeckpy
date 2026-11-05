@@ -848,7 +848,10 @@ class Blaeck(_DeviceBase):
 
     def _dispatch(self, cmd: _commands.Command, send_ack: bool) -> None:
         """An input, a button or a plain command, then the catch-all, then the one ack."""
+        # No name reaches no function, but every command gets one ack.
         if not cmd.name:
+            if send_ack:
+                self._ack(cmd, _ACK_UNKNOWN)
             return
         reason, matched, written = _ACK_UNKNOWN, False, None
         function: tuple | None = None

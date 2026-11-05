@@ -44,6 +44,9 @@
     {"write_event": ["Alarms", "Overheat"]},
     {"command": "<Setpoint,15>"},
     {"command": "<BLAECK.ENTITIES_START>"},
-    {"tick": true}
+    {"tick": true},
+    {"command": "<>"},
+    {"command": "<,5>"},
+    {"command": "<#7:>"}
   ]
 }
