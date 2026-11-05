@@ -7,6 +7,7 @@ what command came in next and from whom, and where does terminal text go.
 
 from __future__ import annotations
 
+import errno
 import logging
 import select
 import socket
@@ -20,6 +21,10 @@ log = logging.getLogger("blaeckpy")
 _SEND_TIMEOUT = 2.0
 # The most taken from a port or a connection at a time.
 _READ_SIZE = 4096
+# accept() running out of what a new connection takes, on Windows under its own numbers too.
+_OUT_OF_RESOURCES = {getattr(errno, name) for name in
+                     ("EMFILE", "ENFILE", "ENOBUFS", "ENOMEM", "WSAEMFILE", "WSAENOBUFS")
+                     if hasattr(errno, name)}
 
 
 class StreamTransport:
@@ -117,6 +122,7 @@ class TcpTransport:
         self.requester = 0
         self._on_connect = on_connect
         self._on_disconnect = on_disconnect
+        self._accept_failing = False
 
     def has_host(self) -> bool:
         return self.host is not None and self.slots[self.host] is not None
@@ -128,7 +134,19 @@ class TcpTransport:
         try:
             sock, address = self.server.accept()
         except (BlockingIOError, InterruptedError):
+            self._accept_failing = False
             return
+        except ConnectionError:
+            # The client went away while it waited in the queue.
+            return
+        except OSError as e:
+            if e.errno not in _OUT_OF_RESOURCES:
+                raise
+            if not self._accept_failing:
+                self._accept_failing = True
+                log.warning("Can't accept a connection: %s; trying again", e)
+            return
+        self._accept_failing = False
         free = next((i for i, c in enumerate(self.slots) if c is None), None)
         if free is None:
             # Every slot is taken.
@@ -227,7 +245,9 @@ class TcpTransport:
                 self._write(slot, data)
 
     def selectables(self) -> list:
-        return [self.server] + [c.sock for c in self.slots if c is not None]
+        connections = [c.sock for c in self.slots if c is not None]
+        # A connection it can't take keeps the server readable, so waiting on it wouldn't wait.
+        return connections if self._accept_failing else [self.server] + connections
 
     def close(self) -> None:
         for slot, connection in enumerate(self.slots):

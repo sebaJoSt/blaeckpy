@@ -1,6 +1,8 @@
 """TCP with real sockets on localhost: hosts and terminals, the newest host wins, slots, the
 connection callbacks, notices held back until a host can hear them, and tick(timeout=)."""
 
+import errno
+import logging
 import socket
 import time
 
@@ -307,4 +309,88 @@ def test_a_connection_that_closes_gets_its_commands_run_first(server):
     while not gone and time.monotonic() < end:
         device.tick()
     assert gone == [5]
+    device.close()
+
+
+class RefusingServer:
+    """A listening socket whose accept() fails with the given error while ``failing``."""
+
+    def __init__(self, server, error):
+        self.server, self.error, self.failing = server, error, True
+
+    def accept(self):
+        if self.failing:
+            raise self.error
+        return self.server.accept()
+
+    def __getattr__(self, name):
+        return getattr(self.server, name)
+
+
+def serve_with_refusals(server, error):
+    device, runs = Blaeck(), []
+    device.on_command("a", lambda *params: runs.append(1))
+    device.begin(server)
+    client = socket.create_connection(server.getsockname(), timeout=2)
+    end = time.monotonic() + 2
+    while device._transport.slots[0] is None and time.monotonic() < end:
+        device.tick()
+    refusing = RefusingServer(server, error)
+    device._transport.server = refusing
+    return device, client, refusing, runs
+
+
+@pytest.mark.parametrize("error, logged", [
+    (ConnectionAbortedError(errno.ECONNABORTED, "aborted"), False),
+    (ConnectionResetError(errno.ECONNRESET, "reset"), False),
+    (OSError(errno.EMFILE, "too many open files"), True),
+    (OSError(errno.ENFILE, "too many in the system"), True),
+    (OSError(errno.ENOBUFS, "no buffers"), True),
+    (OSError(errno.ENOMEM, "no memory"), True),
+], ids=["aborted", "reset", "emfile", "enfile", "enobufs", "enomem"])
+def test_a_connection_that_cant_be_accepted_doesnt_stop_the_device(server, caplog, error, logged):
+    device, client, refusing, runs = serve_with_refusals(server, error)
+    with caplog.at_level(logging.WARNING, logger="blaeckpy"):
+        for _ in range(5):
+            device.tick()
+        client.sendall(b"<a>")
+        end = time.monotonic() + 2
+        while not runs and time.monotonic() < end:
+            device.tick()
+        assert runs == [1]
+        assert len([r for r in caplog.records if "accept" in r.getMessage()]) == (1 if logged else 0)
+
+        # It takes new connections again once it can, and a new failure is logged again.
+        refusing.failing = False
+        second = socket.create_connection(server.getsockname(), timeout=2)
+        end = time.monotonic() + 2
+        while device._transport.slots[1] is None and time.monotonic() < end:
+            device.tick()
+        assert device._transport.slots[1] is not None
+        refusing.failing = True
+        device.tick()
+        assert len([r for r in caplog.records if "accept" in r.getMessage()]) == (2 if logged else 0)
+    client.close()
+    second.close()
+    device.close()
+
+
+def test_tick_still_waits_while_connections_cant_be_accepted(server):
+    device, client, refusing, runs = serve_with_refusals(server, OSError(errno.EMFILE, "too many"))
+    # One more waits in the queue, so the listening socket stays readable.
+    waiting = socket.create_connection(server.getsockname(), timeout=2)
+    device.tick()
+    passes = device._pass
+    device.tick(timeout=0.1)
+    assert device._pass - passes < 100
+    waiting.close()
+    client.close()
+    device.close()
+
+
+def test_any_other_accept_error_is_the_script_s_to_see(server):
+    device, client, refusing, runs = serve_with_refusals(server, OSError(errno.EBADF, "bad file"))
+    with pytest.raises(OSError):
+        device.tick()
+    client.close()
     device.close()
