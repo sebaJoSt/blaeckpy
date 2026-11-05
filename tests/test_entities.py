@@ -930,3 +930,23 @@ def test_a_commands_ack_goes_before_its_function_and_what_that_sends():
     send("<Setpoint,abc>")
     assert log == [("catch-all", "after")]
     device.close()
+
+
+def test_an_interval_started_before_data_doesnt_run_on_before_write_until_data_can_go_out():
+    device, port, calls = Blaeck(), Port(), []
+    device.add_signal("Value", 1.0)
+    device.on_before_write(lambda: calls.append(1))
+    device.begin(port)
+    port.incoming += b"<BLAECK.INTERVAL_START,1000>"
+    for _ in range(50):
+        device.tick()
+    assert calls == []
+
+    port.outgoing.clear()
+    port.incoming += b"<BLAECK.DATA_START>"
+    device.tick()
+    device.tick()
+    assert calls == [1]
+    frames = _decode.Decoder().feed(bytes(port.outgoing))
+    assert any(isinstance(f, _decode.Frame) and f.key == 0xD3 for f in frames)
+    device.close()

@@ -1015,8 +1015,10 @@ class Blaeck(_DeviceBase):
         now = self._clock.millis()
         elapsed = now - self._last_interval_ms
         initial = self._timed and self._timed_first
-        due = self._timed and (self._timed_first or self._interval_ms == 0
-                               or elapsed >= self._interval_ms)
+        # An interval counts only while data can go out, or on_before_write would run on every
+        # tick with the first report still to come.
+        due = self._timed and self._may_write_data() and (
+            self._timed_first or self._interval_ms == 0 or elapsed >= self._interval_ms)
         if due:
             if self._timed_first or self._interval_ms == 0:
                 self._last_interval_ms = now
