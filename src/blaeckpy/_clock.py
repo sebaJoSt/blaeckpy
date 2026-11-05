@@ -34,6 +34,17 @@ class Clock:
         return (time.monotonic_ns() - self._start) // 1_000
 
 
+def check_timestamp(timestamp: int | None) -> int | None:
+    """A time a script gives: None for now, or whole microseconds that fit 64 bits."""
+    if timestamp is None:
+        return None
+    if isinstance(timestamp, bool) or not isinstance(timestamp, int):
+        raise TypeError(f"a timestamp is a whole number of microseconds, not {timestamp!r}")
+    if not 0 <= timestamp < 2**64:
+        raise ValueError(f"timestamp {timestamp} does not fit 64 bits")
+    return timestamp
+
+
 def unix_micros() -> int:
     return time.time_ns() // 1_000
 

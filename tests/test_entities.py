@@ -781,3 +781,96 @@ def test_a_flood_on_a_port_stays_in_the_port_and_all_of_it_runs():
         most = max(most, len(receiver._pending) - receiver._read)
     assert most <= 2 * 4096
     device.close()
+
+
+@pytest.mark.parametrize("bad", [2, None, "1\x002", "1\n", "\ud83d"])
+@pytest.mark.parametrize("key", ["hw_version", "fw_version"])
+def test_a_version_a_frame_cant_carry_is_refused_where_it_was_written(key, bad):
+    with pytest.raises((TypeError, ValueError)):
+        Blaeck("Bench", **{key: bad})
+    with pytest.raises((TypeError, ValueError)):
+        Blaeck("Bench").add_device("Pump", **{key: bad})
+
+
+@pytest.mark.parametrize("declare", [
+    lambda d: Blaeck("\ud83d"),
+    lambda d: d.add_device("\ud83d"),
+    lambda d: d.add_signal("\ud83d", 1.0),
+    lambda d: d.add_signal("S", 1.0, unit="\ud83d"),
+    lambda d: d.add_event("\ud83d", ["a"]),
+    lambda d: d.add_event("E", ["\ud83d"]),
+    lambda d: d.add_event("E", ["a"]).add_type("\ud83d"),
+    lambda d: d.add_select("M", 0, options=["\ud83d"]),
+    lambda d: d.add_switch("S", display_name="\ud83d"),
+    lambda d: d.add_button("B", lambda: None, icon="\ud83d"),
+], ids=["device", "sub-device", "signal", "unit", "event", "event type", "added type", "option",
+        "display name", "icon"])
+def test_text_that_isnt_valid_unicode_is_refused_where_it_was_written(declare):
+    with pytest.raises(ValueError):
+        declare(Blaeck())
+
+
+def test_emojis_go_out_in_everything_a_script_names_freely():
+    device, port = Blaeck("🌡️ Bench", hw_version="Pi 🥧", fw_version="1.0 🚀"), Port()
+    device.add_signal("Temperatur 🌡️", 21.5, unit="°C 🔥")
+    status = device.add_signal("Status", str)
+    status.value = "ok ✅"
+    device.add_event("Alarm 🚨", ["heiß 🔥"])
+    device.add_select("Mode", 0, options=["Aus 💤", "An ⚡"], display_name="Modus 🎛️")
+    note = device.add_text_input("Note", "hi 👋")
+    device.add_button("Reset", lambda: None, display_name="Neustart 🔄")
+    device.add_device("Pumpe 💧", hw_version="🛠️").add_signal("Flow 🌊", 1.0)
+    device.begin(port)
+    port.incoming += "<BLAECK.GET_DEVICES><BLAECK.WRITE_ENTITIES><BLAECK.WRITE_DATA><Note,neu 🎉>".encode()
+    for _ in range(6):
+        device.tick()
+    frames = [f.body for f in _decode.Decoder().feed(bytes(port.outgoing))
+              if isinstance(f, _decode.Frame)]
+    devices = next(b for b in frames if isinstance(b, _decode.DeviceList))
+    assert [d.name for d in devices.devices] == ["🌡️ Bench", "Pumpe 💧"]
+    assert devices.devices[0].hw_version == "Pi 🥧" and devices.devices[1].hw_version == "🛠️"
+    assert [(s.name, s.unit) for s in devices.signals][0] == ("Temperatur 🌡️", "°C 🔥")
+    entities = next(b for b in frames if isinstance(b, _decode.EntityList))
+    assert entities.properties[0].options == ["Aus 💤", "An ⚡"]
+    assert entities.properties[0].display_name == "Modus 🎛️"
+    assert entities.events[0].name == "Alarm 🚨" and entities.events[0].types == ["heiß 🔥"]
+    assert entities.buttons[0].display_name == "Neustart 🔄"
+    assert next(b for b in frames if isinstance(b, _decode.Data)).values[1] == "ok ✅"
+    assert note.value == "neu 🎉"
+    device.close()
+
+
+def test_a_list_too_long_for_one_entry_is_refused_where_it_was_written():
+    many = [f"option {'x' * 300} {i}" for i in range(250)]
+    with pytest.raises(ValueError, match="too long"):
+        Blaeck().add_select("Mode", 0, options=many)
+    with pytest.raises(ValueError, match="too long"):
+        Blaeck().add_sensor("Phase", 0, options=many)
+    device = Blaeck()
+    with pytest.raises(ValueError, match="too long"):
+        device.add_event("Alarms", many)
+    assert device._events == []
+    event = device.add_event("Alarms", many[:100])
+    with pytest.raises(ValueError, match="too long"):
+        for t in many[100:]:
+            event.add_type(t)
+    assert len(event._entry().fields) <= 0xFFFF
+    port = Port()
+    device.begin(port)
+    device.tick()
+
+
+@pytest.mark.parametrize("bad, error", [(1.5e15, TypeError), ("5", TypeError), (True, TypeError),
+                                        (-1, ValueError), (2**64, ValueError)])
+def test_a_timestamp_a_frame_cant_carry_raises_from_the_call_that_gave_it(bad, error):
+    device, port = Blaeck(), Port()
+    signal = device.add_signal("T", 1.0)
+    pump = device.add_device("Pump")
+    device.begin(port)
+    for call in (lambda: device.tick(timestamp=bad), lambda: device.write_all(bad),
+                 lambda: pump.write_all(bad), lambda: signal.write(timestamp=bad)):
+        with pytest.raises(error):
+            call()
+    device.tick(timestamp=5)
+    device.write_all(2**64 - 1)
+    device.close()

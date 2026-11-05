@@ -14,7 +14,7 @@ from ._clock import TimestampMode
 from ._events import Button, Event
 from ._properties import (Category, Mode, NumberInput, Presentation, Select, Sensor, StateClass, Switch,
                           TextInput, check_host_name)
-from ._signal import ALWAYS, OnChange, Signal, _Mode, check_name, check_unit, changed, type_and_value
+from ._signal import ALWAYS, OnChange, Signal, _Mode, check_name, check_text, check_unit, changed, type_and_value
 from .protocol import frames
 from .protocol.schema_hash import schema_hash
 
@@ -154,6 +154,7 @@ class _DeviceBase:
                                     device_class=device_class, category=category,
                                     disabled_by_default=disabled_by_default)
         event = Event(self._core, self._id, name, types, presentation)
+        frames.check_entry(event._entry())
         self._core._events.append(event)
         self._core._catalog_changed()
         return event
@@ -261,7 +262,8 @@ class SubDevice(_DeviceBase):
     def write_all(self, timestamp: int | None = None) -> None:
         """Sends this device's signals now."""
         core = self._core
-        core._write_data(0, [s for s in core._signals if s.device_id == self._id], timestamp)
+        core._write_data(0, [s for s in core._signals if s.device_id == self._id],
+                         _clock.check_timestamp(timestamp))
 
 
 class Blaeck(_DeviceBase):
@@ -277,8 +279,8 @@ class Blaeck(_DeviceBase):
         self._core, self._id = self, 0
         self._devices: list[SubDevice] = []
         self.name = check_name(name, "device")
-        self.hw_version = hw_version
-        self.fw_version = fw_version
+        self.hw_version = check_text(hw_version, "hw_version")
+        self.fw_version = check_text(fw_version, "fw_version")
         self._signals: list[Signal] = []
         self._transport: _transport.StreamTransport | _transport.TcpTransport | None = None
         self._clock = _clock.Clock()
@@ -347,7 +349,8 @@ class Blaeck(_DeviceBase):
                              "share a name")
         if len(self._devices) >= 254:
             raise ValueError("a board has at most 254 devices")
-        device = SubDevice(self, len(self._devices) + 1, name, hw_version, fw_version)
+        device = SubDevice(self, len(self._devices) + 1, name, check_text(hw_version, "hw_version"),
+                           check_text(fw_version, "fw_version"))
         self._devices.append(device)
         return device
 
@@ -397,6 +400,9 @@ class Blaeck(_DeviceBase):
         return name
 
     def _add_property(self, prop):
+        # A get= isn't called just to declare it; its entry holds no list to outgrow.
+        if getattr(prop, "_get", None) is None:
+            frames.check_entry(prop._entry(prop._current()))
         self._properties.append(prop)
         self._catalog_changed()
         return prop
@@ -639,6 +645,7 @@ class Blaeck(_DeviceBase):
         By name only, so a bare number is always the timeout. It belongs to the moment of the
         call, so it can't be combined with a timeout.
         """
+        timestamp = _clock.check_timestamp(timestamp)
         if timeout and timestamp is not None:
             raise ValueError("pass a timestamp or a timeout, not both")
         if timeout < 0:
@@ -720,7 +727,7 @@ class Blaeck(_DeviceBase):
 
     def write_all(self, timestamp: int | None = None) -> None:
         """Sends every signal now."""
-        self._write_all(0, timestamp)
+        self._write_all(0, _clock.check_timestamp(timestamp))
 
     # ----- what read() does -----
 

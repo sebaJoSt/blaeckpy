@@ -7,6 +7,7 @@ import struct
 from dataclasses import dataclass
 from typing import Any
 
+from ._clock import check_timestamp
 from .protocol.frames import DType
 
 _DTYPES = {bool: DType.BOOL, int: DType.INT64, float: DType.DOUBLE, str: DType.TEXT}
@@ -95,24 +96,28 @@ def checked(type_: type, value: object, what: str = "value") -> Any:
     return value
 
 
+def check_text(text: object, what: str) -> str:
+    """Text a frame carries as it stands: no control characters, and valid Unicode."""
+    if not isinstance(text, str):
+        raise TypeError(f"{what} must be a str, not {type(text).__name__}")
+    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in text):
+        raise ValueError(f"{what} {text!r} holds a control character")
+    try:
+        text.encode("utf-8")
+    except UnicodeEncodeError:
+        raise ValueError(f"{what} {text!r} is not valid Unicode") from None
+    return text
+
+
 def check_unit(unit: object) -> str:
-    """A signal's unit: "" for none, otherwise text without control characters."""
-    if unit is None:
-        return ""
-    if not isinstance(unit, str):
-        raise TypeError(f"a unit is a str, not {type(unit).__name__}")
-    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in unit):
-        raise ValueError(f"unit {unit!r} holds a control character")
-    return unit
+    """A signal's unit: "" for none."""
+    return "" if unit is None else check_text(unit, "a unit")
 
 
 def check_name(name: object, what: str) -> str:
-    if not isinstance(name, str):
-        raise TypeError(f"a {what} name is a str, not {type(name).__name__}")
+    name = check_text(name, f"a {what} name")
     if not name:
         raise ValueError(f"a {what} name cannot be empty")
-    if any(ord(c) < 0x20 or ord(c) == 0x7F for c in name):
-        raise ValueError(f"{what} name {name!r} holds a control character")
     return name
 
 
@@ -256,7 +261,7 @@ class Signal[T: (bool, int, float, str)]:
             raise RuntimeError(f"signal {self.name!r} was removed by clear_all_signals()")
         if value is not None:
             self.value = value
-        self._device._write_signal_now(self, timestamp)
+        self._device._write_signal_now(self, check_timestamp(timestamp))
 
     def __repr__(self) -> str:
         return f"Signal({self.name!r}, {self.type.__name__}, {self._value!r})"

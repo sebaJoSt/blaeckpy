@@ -140,6 +140,10 @@ def check_listed(items: Sequence[str], what: str) -> None:
             raise ValueError(f"{what} {item!r} has leading or trailing spaces")
         if "\x00" in item:
             raise ValueError(f"{what} {item!r} holds a null byte, which would end it early")
+        try:
+            item.encode("utf-8")
+        except UnicodeEncodeError:
+            raise ValueError(f"{what} {item!r} is not valid Unicode") from None
 
 
 def text_value(text: str) -> bytes:
@@ -401,6 +405,13 @@ def button_entry(
     return Entry(device_id, EntryKind.BUTTON, string(name) + u16(flags) + shown)
 
 
+def check_entry(entry: Entry) -> None:
+    """An entry's length goes out in 2 bytes."""
+    if len(entry.fields) > 0xFFFF:
+        raise ValueError(f"too long: this entry would take {len(entry.fields)} bytes, and one holds "
+                         "at most 65535")
+
+
 def entity_list(entries: Iterable[Entry], message_id: int = 0) -> bytes:
     """The entries in the order given: properties, then events, then buttons, as declared.
 
@@ -408,7 +419,6 @@ def entity_list(entries: Iterable[Entry], message_id: int = 0) -> bytes:
     """
     fields = bytearray()
     for e in entries:
-        if len(e.fields) > 0xFFFF:
-            raise ValueError(f"an entry of {len(e.fields)} bytes; its length is 2 bytes")
+        check_entry(e)
         fields += u8(e.device_id) + u8(e.kind) + u16(len(e.fields)) + e.fields
     return envelope.build(Key.ENTITY_LIST, message_id, bytes(fields))

@@ -10,7 +10,7 @@ from enum import StrEnum
 from fractions import Fraction
 from typing import Any, overload
 
-from ._signal import ANY_CHANGE, Signal, _Reporting, changed, check_delta, check_unit, checked, type_and_value
+from ._signal import ANY_CHANGE, Signal, _Reporting, changed, check_delta, check_text, checked, type_and_value
 from .protocol import frames
 from .protocol.frames import DType, ValueKind
 
@@ -89,7 +89,7 @@ def _enum(value, enum_type, what: str):
 
 
 def _text_or_none(text):
-    return None if text is None else check_unit(text)  # no control characters
+    return None if text is None else check_text(text, "this text")
 
 
 def _precision(decimals):

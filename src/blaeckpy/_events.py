@@ -35,6 +35,11 @@ class Event(_Presented):
         if type_ in self.types:
             raise ValueError(f"event type {type_!r} exists already")
         self.types.append(type_)
+        try:
+            frames.check_entry(self._entry())
+        except ValueError:
+            self.types.pop()
+            raise
         self._device._catalog_changed()
 
     def write(self, type_: str) -> None:
