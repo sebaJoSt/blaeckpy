@@ -100,6 +100,32 @@ def test_the_page_and_its_stylesheet_are_served(server):
         device.close()
 
 
+@pytest.mark.parametrize("host, family", [
+    ("127.0.0.1", socket.AF_INET),
+    ("0.0.0.0", socket.AF_INET),
+    ("::1", socket.AF_INET6),
+])
+def test_status_starts_without_reverse_dns_and_accepts_a_hostname(host, family, monkeypatch):
+    def no_reverse_dns(name=""):
+        raise AssertionError("status startup must not resolve a hostname")
+
+    try:
+        server = socket.create_server((host, 0), family=family)
+    except OSError:
+        if family == socket.AF_INET6:
+            pytest.skip("IPv6 loopback is unavailable")
+        raise
+    monkeypatch.setattr(socket, "getfqdn", no_reverse_dns)
+    device = Blaeck("Bench")
+    try:
+        device.begin(server, status_port=0)
+        data = json.loads(get(f"http://localhost:{device._status.port}/api")[1])
+        assert data["device"]["name"] == "Bench"
+    finally:
+        device.close()
+        server.close()
+
+
 def test_a_port_in_use_moves_the_page_to_a_free_one(server, caplog):
     taken = socket.create_server(("127.0.0.1", 0))
     port = taken.getsockname()[1]

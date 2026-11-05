@@ -1,10 +1,12 @@
 """Every example runs: started on a free TCP port, a host connects, asks for the catalogs and starts
 data and entities, and gets valid frames back while the example keeps running."""
 
+import queue
 import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 from pathlib import Path
 
@@ -40,10 +42,35 @@ def frames_in(data: bytes) -> list:
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda p: p.stem)
 def test_example_runs_and_answers_a_host(script):
     process = subprocess.Popen([sys.executable, "-u", "-c", LAUNCHER, str(script)], cwd=EXAMPLES,
-                               stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+                               stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+    output = queue.Queue()
+    transcript = []
+
+    def read_output():
+        for line in process.stdout:
+            transcript.append(line)
+            output.put(line)
+        output.put(None)
+
+    reader = threading.Thread(target=read_output, daemon=True)
+    reader.start()
     try:
-        line = process.stdout.readline()
-        port = int(re.search(r"TCP port (\d+)", line).group(1))
+        deadline = time.monotonic() + 10
+        port, ready = None, False
+        while port is None or not ready:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                pytest.fail("Example did not become ready within 10 seconds:\n" + "".join(transcript))
+            try:
+                line = output.get(timeout=remaining)
+            except queue.Empty:
+                pytest.fail("Example did not become ready within 10 seconds:\n" + "".join(transcript))
+            if line is None:
+                pytest.fail("Example exited before becoming ready:\n" + "".join(transcript))
+            match = re.fullmatch(r"TCP port (\d+)", line.strip())
+            if match:
+                port = int(match.group(1))
+            ready |= line.strip() == "##LOGGBOK:READY##"
         host = socket.create_connection(("127.0.0.1", port), timeout=3)
         host.sendall(b"<BLAECK.GET_DEVICES>")
         time.sleep(0.3)
@@ -64,7 +91,7 @@ def test_example_runs_and_answers_a_host(script):
                 break
             data += chunk
         host.close()
-        assert process.poll() is None, process.stderr.read()
+        assert process.poll() is None, "".join(transcript)
         keys = [f.key for f in frames_in(data)]
         assert keys.count(0xA5) == 5, keys
         assert 0xB7 in keys and 0x90 in keys
@@ -73,3 +100,5 @@ def test_example_runs_and_answers_a_host(script):
     finally:
         process.kill()
         process.wait()
+        reader.join()
+        process.stdout.close()

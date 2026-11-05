@@ -20,6 +20,7 @@ import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib.resources import files
+from socketserver import TCPServer
 
 log = logging.getLogger("blaeckpy")
 
@@ -198,6 +199,12 @@ class _Server(ThreadingHTTPServer):
     daemon_threads = True
     # On Windows, SO_REUSEADDR would let a second program take a port in use.
     allow_reuse_address = sys.platform != "win32"
+
+    def server_bind(self) -> None:
+        # HTTPServer resolves server_name with reverse DNS; the page needs only the bound address.
+        TCPServer.server_bind(self)
+        self.server_name = str(self.server_address[0])
+        self.server_port = self.server_address[1]
 
     def handle_error(self, request, client_address) -> None:
         # A browser reloading or closing the page mid-reply is no error.
