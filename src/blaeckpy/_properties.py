@@ -402,14 +402,17 @@ class NumberInput[T: (int, float)](_Input[T]):
             return OUT_OF_RANGE
         if step is not None:
             assert low is not None and high is not None  # a step needs a range
-            # Keep the decimal grid exact until the final conversion to a double.
-            origin, increment = Fraction(str(low)), Fraction(str(step))
-            steps = (Fraction(str(number)) - origin) / increment
-            nearest = round(steps)
-            if abs(steps - nearest) < Fraction(1, 1000):
-                snapped = origin + nearest * increment
-                if origin <= snapped <= Fraction(str(high)):
-                    number = float(snapped)
+            # Whether it is near a step is decided in doubles. A range or step so extreme that
+            # the sum overflows names no step, and the value stays as sent.
+            steps = (number - float(low)) / float(step)
+            if math.isfinite(steps):
+                nearest = math.floor(steps + 0.5)
+                if abs(steps - nearest) < 1e-3:
+                    # Where it lands stays exact until the final conversion to a double.
+                    origin, increment = Fraction(str(low)), Fraction(str(step))
+                    snapped = origin + nearest * increment
+                    if origin <= snapped <= Fraction(str(high)):
+                        number = float(snapped)
         self._value = number  # type: ignore[assignment]
         return OK
 

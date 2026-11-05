@@ -1,0 +1,41 @@
+{
+  "description": "Values near a step: within a thousandth of a step a value lands on it, exactly on the decimal the step names; further away it stays as sent, and the range still holds. The values a thousandth away show how the check rounds.",
+  "board": {"name": "Steps"},
+  "properties": [
+    {"kind": "number_input", "name": "Tenths", "type": "float", "value": 0.0, "min": 0.0, "max": 1.0, "step": 0.1},
+    {"kind": "number_input", "name": "Offset", "type": "float", "value": 0.05, "min": 0.05, "max": 10.0, "step": 0.1},
+    {"kind": "number_input", "name": "Quarters", "type": "float", "value": 0.0, "min": 0.0, "max": 100.0, "step": 0.25},
+    {"kind": "number_input", "name": "Fine", "type": "float", "value": 0.0, "min": -1.0, "max": 1.0, "step": 0.001},
+    {"kind": "number_input", "name": "Coarse", "type": "float", "value": 1.5, "min": 1.5, "max": 1000000.0, "step": 2.5}
+  ],
+  "steps": [
+    {"command": "<BLAECK.GET_DEVICES>"},
+    {"command": "<BLAECK.WRITE_ENTITIES>"},
+    {"command": "<BLAECK.ENTITIES_START>"},
+    {"command": "<Tenths,0.30000000001>"},
+    {"command": "<Tenths,0.29995>"},
+    {"command": "<Tenths,0.7999>"},
+    {"command": "<Tenths,0.4001>"},
+    {"command": "<Tenths,0.9001>"},
+    {"command": "<Tenths,0.15>"},
+    {"command": "<Tenths,0.9999>"},
+    {"command": "<Tenths,1.0001>"},
+    {"command": "<Offset,0.05>"},
+    {"command": "<Offset,3.3>"},
+    {"command": "<Offset,4.0501>"},
+    {"command": "<Offset,4.0499>"},
+    {"command": "<Offset,9.949900000000001>"},
+    {"command": "<Offset,9.95001>"},
+    {"command": "<Quarters,99.99975>"},
+    {"command": "<Quarters,3.49975>"},
+    {"command": "<Quarters,99.50025>"},
+    {"command": "<Quarters,12.125>"},
+    {"command": "<Fine,-0.565001>"},
+    {"command": "<Fine,0.573001>"},
+    {"command": "<Fine,0.1234>"},
+    {"command": "<Fine,0.0005>"},
+    {"command": "<Coarse,6161.5025>"},
+    {"command": "<Coarse,4813.9975>"},
+    {"command": "<Coarse,4814.1>"}
+  ]
+}
