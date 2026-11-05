@@ -195,7 +195,8 @@ class Signal[T: (bool, int, float, str)]:
 
     @property
     def unit(self) -> str:
-        """The unit, "" for none. A host learns of a new one from the next data frame."""
+        """The unit, "" for none. A host learns of a new one from the next device list; one that is
+        logging stops, as the schema hash changes."""
         return self._unit
 
     @unit.setter

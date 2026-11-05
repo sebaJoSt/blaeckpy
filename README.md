@@ -86,7 +86,7 @@ The host decides how often data is sent: it sends `<BLAECK.DATA_START>` and
 
 ## What a script declares
 
-Everything a script declares on the board it can also declare on a sub-device.
+Signals, inputs, sensors, events, buttons and commands can also be declared on a sub-device.
 
 | blaeckpy | What it is |
 |---|---|
@@ -99,7 +99,7 @@ Everything a script declares on the board it can also declare on a sub-device.
 | `@device.on_command(name)`, `@device.on_any_command` | Commands no host lists; parameters arrive as text |
 | `add_device(name)`, `mark_missing()`, `mark_present()`, `write_restarted()` | A second board shown as its own device |
 | `unit=`, `icon=`, `device_class=`, `category=Category.CONFIG`, ... | How a host shows it |
-| `sensor.icon = ...`, `input.set_range(0, 20)`, `signal.write_on_change = 0.5`, ... | The same, changed while running; a host gets the new entity list |
+| `sensor.icon = ...`, `input.set_range(0, 20)`, `signal.write_on_change = 0.5`, ... | The same, changed while running. An entity's settings go out in a new entity list. A signal's reporting settings stay on the device. A signal's unit changes the schema hash, so a logging host stops until it reads the device list again |
 | `@device.on_data_start`, `@device.on_interval_start`, ... | Following what the host switches on and off; `on_interval_start` gets the interval in ms, the others get nothing |
 | `@device.on_connect`, `@device.on_disconnect` | TCP connections, with `(client_no, address)` |
 | `device.terminal.print(...)` | Text for whoever looks into the running device |
@@ -184,7 +184,7 @@ instead. Run one and point Loggbok at it.
 
 ## Testing
 
-Parity with blaeck is tested, not assumed. blaeck records every frame it sends while playing a set
+Every frame is tested against recordings. blaeck records every frame it sends while playing a set
 of scenarios ([golden scenarios](https://github.com/sebaJoSt/blaeck/tree/main/extras/tests/golden));
 `scripts/copy_golden.py` copies them here, and blaeckpy must play each scenario through its public
 API and send the same bytes. Real-socket tests cover TCP, and every example is run against a host.

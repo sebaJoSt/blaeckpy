@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 
 from ._properties import MISSING_VALUE, NOT_A_NUMBER, OK, OUT_OF_RANGE
 
-#: Characters a command buffer holds, the terminator counted as in blaeck, so the device list
+#: Characters a command buffer holds, the terminator counted, so the device list
 #: advertises one less: 1023. blaeck's default is 128, a microcontroller's RAM budget that fits a
 #: 32-byte text percent-encoded; here a 255-byte text, the most Home Assistant holds, fits even
 #: with every byte encoded, along with its name and a #id: prefix.
@@ -15,7 +15,7 @@ PARAM_MAX = 10
 
 
 class Receiver:
-    """Collects bytes into commands the way blaeck does: < starts one, > ends it, a second <
+    """Collects bytes into commands: < starts one, > ends it, a second <
     abandons an unfinished one, and what overflows the buffer is dropped and flagged."""
 
     def __init__(self) -> None:
@@ -104,7 +104,7 @@ def _text(data: bytes) -> str:
 
 
 def parse(raw: bytes, overflowed: bool) -> Command:
-    """Splits a command as blaeck does: one #id: prefix at most, the name before the first comma,
+    """Splits a command: one #id: prefix at most, the name before the first comma,
     then up to ten parameters, each percent-decoded and then stripped of outer spaces, tabs, CR
     and LF."""
     cmd = Command(raw, truncated=overflowed)

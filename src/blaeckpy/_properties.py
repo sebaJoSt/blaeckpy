@@ -195,7 +195,7 @@ def _interval_ms(ms) -> int:
 
 
 def _parse_whole(text: str) -> int | None:
-    """A whole decimal number, read exactly as blaeck reads it into a long long; None if it does
+    """A whole decimal number, read exactly into 64 bits; None if it does
     not fit."""
     value = int(text)
     return value if INT64_MIN <= value <= INT64_MAX else None

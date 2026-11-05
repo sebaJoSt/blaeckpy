@@ -28,7 +28,8 @@ class Key(IntEnum):
 
 
 class DType(IntEnum):
-    """Datatype codes. blaeckpy sends BOOL, INT64, DOUBLE and TEXT; the rest are blaeck's."""
+    """Datatype codes. blaeckpy sends BOOL, BYTE (a select's index), INT64, DOUBLE and TEXT; the rest are for other
+    devices."""
 
     BOOL = 0
     BYTE = 1
@@ -148,7 +149,7 @@ def check_listed(items: Sequence[str], what: str) -> None:
 
 def text_value(text: str) -> bytes:
     """A DTYPE 10 value: a 1-byte length, then that many UTF-8 bytes. Bytes that came in as
-    something else go back out unchanged, as blaeck sends them."""
+    something else go back out unchanged."""
     data = text.encode("utf-8", "surrogateescape")
     if len(data) > TEXT_MAX:
         raise ValueError(f"text is {len(data)} bytes; at most {TEXT_MAX} fit")
