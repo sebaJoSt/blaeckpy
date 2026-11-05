@@ -768,3 +768,16 @@ def test_a_near_step_is_snapped_only_if_the_result_fits_the_range(low, high, ste
     device.begin(port)
     assert ack_reason(device, port, f"<Value,{sent!r}>") == 0
     assert value.value == expected
+
+def test_a_flood_on_a_port_stays_in_the_port_and_all_of_it_runs():
+    device, port, runs = Blaeck(), Port(), []
+    device.on_command("a", lambda *params: runs.append(1))
+    device.begin(port)
+    port.incoming += b"<a>" * 100_000
+    most = 0
+    while len(runs) < 100_000:
+        device.tick()
+        receiver = device._transport._receiver
+        most = max(most, len(receiver._pending) - receiver._read)
+    assert most <= 2 * 4096
+    device.close()

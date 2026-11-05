@@ -18,6 +18,8 @@ from ._commands import Receiver
 log = logging.getLogger("blaeckpy")
 # How long a write to a host or terminal may take before it counts as failed.
 _SEND_TIMEOUT = 2.0
+# The most taken from a port or a connection at a time.
+_READ_SIZE = 4096
 
 
 class StreamTransport:
@@ -38,9 +40,11 @@ class StreamTransport:
 
     def receive(self):
         """The next complete command as ``(raw, overflowed)``, or None."""
-        waiting = self.port.in_waiting
-        if waiting:
-            self._receiver.feed(bytes(self.port.read(waiting)))
+        # With a command waiting, the rest stays in the port: a flood can't grow without limit.
+        if not self._receiver.has_command():
+            waiting = self.port.in_waiting
+            if waiting:
+                self._receiver.feed(bytes(self.port.read(min(waiting, _READ_SIZE))))
         return self._receiver.next_command()
 
     def builtin_received(self) -> None:
@@ -95,7 +99,6 @@ class _Connection:
         self.address = address
         self.receiver = Receiver()
         # The peer closed its side: what it sent is still answered, then the connection drops.
-        self.eof = False
 
 
 class TcpTransport:
@@ -154,12 +157,10 @@ class TcpTransport:
         self._on_disconnect(slot, address, reason)
 
     def _pull(self) -> None:
-        """Takes in what each connection has, and notices which ones closed. A closed one is
-        dropped once the commands it sent before closing are answered."""
-        for slot, connection in enumerate(self.slots):
-            if connection is not None and connection.eof and not connection.receiver.has_command():
-                self._drop(slot)
-        open_ = [c.sock for c in self.slots if c is not None and not c.eof]
+        """Takes in what each connection has, and notices which ones closed. With a command
+        waiting, the rest stays in the socket, so a flood slows its sender instead of growing here.
+        A closing is seen after the data before it, so a connection's commands run first."""
+        open_ = [c.sock for c in self.slots if c is not None and not c.receiver.has_command()]
         if not open_:
             return
         readable, _, _ = select.select(open_, [], [], 0)
@@ -167,7 +168,7 @@ class TcpTransport:
             if connection is None or connection.sock not in readable:
                 continue
             try:
-                data = connection.sock.recv(4096)
+                data = connection.sock.recv(_READ_SIZE)
             except (BlockingIOError, InterruptedError, TimeoutError):
                 continue
             except OSError:
@@ -175,8 +176,6 @@ class TcpTransport:
                 continue
             if data:
                 connection.receiver.feed(data)
-            elif connection.receiver.has_command():
-                connection.eof = True
             else:
                 self._drop(slot)
 
@@ -228,7 +227,7 @@ class TcpTransport:
                 self._write(slot, data)
 
     def selectables(self) -> list:
-        return [self.server] + [c.sock for c in self.slots if c is not None and not c.eof]
+        return [self.server] + [c.sock for c in self.slots if c is not None]
 
     def close(self) -> None:
         for slot, connection in enumerate(self.slots):

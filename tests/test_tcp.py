@@ -270,3 +270,41 @@ def test_closing_from_on_disconnect_when_a_notice_fails_ends_tick_quietly(server
     time.sleep(0.1)
     device.tick()
     device.tick()
+
+def test_a_flood_of_commands_waits_in_the_socket_and_all_of_them_run(server):
+    device, runs = Blaeck(), []
+    device.on_command("a", lambda *params: runs.append(1))
+    device.begin(server)
+    client = socket.create_connection(server.getsockname(), timeout=2)
+    client.setblocking(False)
+    flood, sent = b"<a>" * 200_000, 0
+    def pending():
+        slots = [c for c in device._transport.slots if c is not None]
+        return sum(len(c.receiver._pending) - c.receiver._read for c in slots)
+
+    most = 0
+    while len(runs) * 3 < len(flood):
+        try:
+            sent += client.send(flood[sent:sent + 65536])
+        except BlockingIOError:
+            pass
+        device.tick()
+        most = max(most, pending())
+    assert most <= 2 * 4096
+    client.close()
+    device.close()
+
+
+def test_a_connection_that_closes_gets_its_commands_run_first(server):
+    device, runs, gone = Blaeck(), [], []
+    device.on_command("a", lambda *params: runs.append(1))
+    device.on_disconnect(lambda client_no, address: gone.append(len(runs)))
+    device.begin(server)
+    client = socket.create_connection(server.getsockname(), timeout=2)
+    client.sendall(b"<a>" * 5)
+    client.close()
+    end = time.monotonic() + 2
+    while not gone and time.monotonic() < end:
+        device.tick()
+    assert gone == [5]
+    device.close()
