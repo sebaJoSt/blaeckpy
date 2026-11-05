@@ -851,6 +851,7 @@ class Blaeck(_DeviceBase):
         if not cmd.name:
             return
         reason, matched, written = _ACK_UNKNOWN, False, None
+        function: tuple | None = None
         prop = next((p for p in self._properties if p.name == cmd.name), None)
         if prop is not None:
             matched = True
@@ -871,22 +872,29 @@ class Blaeck(_DeviceBase):
                     reason = _properties.DEVICE_NOT_RESPONDING
                 else:
                     reason = _ACK_OK
+                    # A button ignores any parameters sent with the press.
                     if button is not None:
-                        self._safe(button.press)
+                        function = (button.press,)
                     elif command is not None:
-                        self._safe(command[1], *cmd.params)
-        if self._any_command is not None:
-            took = self._safe(self._any_command, cmd.name, *cmd.params)
-            if not matched and took is True:
-                matched, reason = True, _ACK_OK
+                        function = (command[1], *cmd.params)
+        # A name nothing has is accepted only if the catch-all takes it, and the ack carries that
+        # answer, so here it goes first; otherwise it sees the command after its own function.
+        catch_all_first = not matched and self._any_command is not None
+        if catch_all_first and self._safe(self._any_command, cmd.name, *cmd.params) is True:
+            reason = _ACK_OK
         if send_ack:
             self._ack(cmd, reason)
+        # The ack is out, so a function that takes long doesn't hold it back.
+        if function is not None:
+            self._safe(*function)
         if written is not None:
             if written._on_change is not None:
                 self._safe(written._on_change)
             # on_change may have removed it, as clear_all_controls() does.
             if any(p is written for p in self._properties):
                 self._write_property_frame(written)
+        if not catch_all_first and self._any_command is not None:
+            self._safe(self._any_command, cmd.name, *cmd.params)
 
     # ----- the entity list, property values and events -----
 

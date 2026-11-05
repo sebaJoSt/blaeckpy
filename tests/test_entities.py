@@ -874,3 +874,59 @@ def test_a_timestamp_a_frame_cant_carry_raises_from_the_call_that_gave_it(bad, e
     device.tick(timestamp=5)
     device.write_all(2**64 - 1)
     device.close()
+
+
+def test_a_commands_ack_goes_before_its_function_and_what_that_sends():
+    device, port, log = Blaeck(), Port(), []
+    device.add_signal("Value", 1.0)
+
+    def seen(who):
+        frames = _decode.Decoder().feed(bytes(port.outgoing))
+        acked = any(isinstance(f, _decode.Frame) and f.key == 0xA5 for f in frames)
+        log.append((who, "after" if acked else "before"))
+
+    def press():
+        seen("press")
+        device.write_all()
+
+    def run(*params):
+        seen("handler")
+        device.write_all()
+
+    device.add_button("PRESS", press)
+    device.on_command("RUN", run)
+    setpoint = device.add_number_input("Setpoint", 0.0)
+    setpoint.on_change(lambda: seen("input"))
+
+    @device.on_any_command
+    def catch_all(command, *params):
+        seen("catch-all")
+        return command == "TAKEN"
+
+    device.begin(port)
+    device.tick()
+
+    def send(command):
+        port.outgoing.clear()
+        log.clear()
+        port.incoming += command.encode()
+        device.tick()
+        return [f.key for f in _decode.Decoder().feed(bytes(port.outgoing)) if isinstance(f, _decode.Frame)]
+
+    assert send("<PRESS>")[:2] == [0xA5, 0xD3]
+    assert log == [("press", "after"), ("catch-all", "after")]
+    assert send("<RUN,1>")[:2] == [0xA5, 0xD3]
+    assert log == [("handler", "after"), ("catch-all", "after")]
+    send("<Setpoint,2>")
+    assert log == [("input", "after"), ("catch-all", "after")] and setpoint.value == 2.0
+
+    # The catch-all's answer decides the ack, so it runs first for a name nothing has.
+    send("<TAKEN>")
+    assert log == [("catch-all", "before")]
+    assert ack_reason(device, port, "<TAKEN>") == 0
+    send("<NOBODY>")
+    assert log == [("catch-all", "before")]
+    assert ack_reason(device, port, "<NOBODY>") == 1
+    send("<Setpoint,abc>")
+    assert log == [("catch-all", "after")]
+    device.close()
