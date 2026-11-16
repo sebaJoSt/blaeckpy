@@ -6,7 +6,7 @@ import re
 
 import pytest
 
-from blaeckpy import Blaeck, Category, Mode, OnChange
+from blaeckpy import Blaeck, Category, Mode, IfChanged
 from blaeckpy.protocol import _decode
 
 
@@ -530,7 +530,7 @@ def test_a_changed_setting_is_checked_as_add_does_and_a_refused_one_keeps_the_ol
 
 
 def test_a_signals_policies_and_unit_change_while_running():
-    from blaeckpy import OFF, OnChange
+    from blaeckpy import OFF, IfChanged
     device = Blaeck()
     flow = device.add_signal("Flow", 0.0, unit="l/min")
     flow.write_on_change = 0.5
@@ -539,7 +539,7 @@ def test_a_signals_policies_and_unit_change_while_running():
     flow.write_on_change = None
     flow.write_at_interval = OFF
     assert flow._reporting is None
-    flow.write_at_interval = OnChange(1.0)
+    flow.write_at_interval = IfChanged(1.0)
     assert flow._reporting.interval_delta == 1.0
     flow.unit = None
     assert flow.unit == ""
@@ -1025,8 +1025,8 @@ def test_interval_mode_goes_through_write_at_interval():
     device = Blaeck()
     signal = device.add_signal("S", 1.0)
     assert not hasattr(signal, "interval_mode")
-    signal.write_at_interval = OnChange(0.5)
-    assert signal._reporting is not None and signal.write_at_interval == OnChange(0.5)
+    signal.write_at_interval = IfChanged(0.5)
+    assert signal._reporting is not None and signal.write_at_interval == IfChanged(0.5)
 
 
 @pytest.mark.parametrize("clear, make", [

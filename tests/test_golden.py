@@ -14,7 +14,7 @@ import pytest
 
 import blaeckpy
 from blaeckpy import _commands, _device
-from blaeckpy._signal import ALWAYS, ANY_CHANGE, OFF, OnChange
+from blaeckpy._signal import ALWAYS, ANY_CHANGE, OFF, IfChanged
 from blaeckpy.protocol import _decode
 
 GOLDEN = Path(__file__).parent / "golden"
@@ -78,7 +78,7 @@ def interval_policy(spec):
         return ALWAYS
     if spec == "off":
         return OFF
-    return OnChange(spec["on_change"])
+    return IfChanged(spec["if_changed"])
 
 
 PRESENTATION = ("display_name", "icon", "device_class", "category", "disabled_by_default")

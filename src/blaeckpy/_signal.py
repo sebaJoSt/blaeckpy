@@ -16,7 +16,7 @@ _DEFAULTS = {bool: False, int: 0, float: 0.0, str: ""}
 INT64_MIN, INT64_MAX = -(2**63), 2**63 - 1
 TEXT_MAX = 255
 
-#: A change of any size counts, for ``write_on_change=`` and :class:`OnChange`.
+#: A change of any size counts, for ``write_on_change=`` and :class:`IfChanged`.
 ANY_CHANGE = 0.0
 
 
@@ -45,13 +45,13 @@ def check_delta(delta: object, what: str = "a change threshold") -> float:
 
 
 @dataclass(frozen=True)
-class OnChange:
+class IfChanged:
     """In an interval report only if the value moved by at least ``delta`` since last sent."""
 
     delta: float = ANY_CHANGE
 
     def __post_init__(self) -> None:
-        check_delta(self.delta, "OnChange(delta)")
+        check_delta(self.delta, "IfChanged(delta)")
 
 
 def type_and_value(type_or_initial: object, initial: object) -> tuple[type, object]:
@@ -176,7 +176,7 @@ class Signal[T: (bool, int, float, str)]:
         self._value: T = value
         # Only a policy that compares keeps a baseline.
         self._reporting: _Reporting | None = None
-        self._interval_mode: _Mode | OnChange = ALWAYS
+        self._interval_mode: _Mode | IfChanged = ALWAYS
         self._min_interval_ms = 100
         self.min_interval_ms = min_interval_ms
         self.write_at_interval = write_at_interval
@@ -190,7 +190,7 @@ class Signal[T: (bool, int, float, str)]:
 
     def _drop_unused_reporting(self) -> None:
         r = self._reporting
-        if r is not None and not r.immediate and not isinstance(self._interval_mode, OnChange):
+        if r is not None and not r.immediate and not isinstance(self._interval_mode, IfChanged):
             self._reporting = None
 
     @property
@@ -204,16 +204,16 @@ class Signal[T: (bool, int, float, str)]:
         self._unit = check_unit(unit)
 
     @property
-    def write_at_interval(self) -> _Mode | OnChange:
-        """ALWAYS, OFF or OnChange(delta): whether the signal is in an interval report."""
+    def write_at_interval(self) -> _Mode | IfChanged:
+        """ALWAYS, OFF or IfChanged(delta): whether the signal is in an interval report."""
         return self._interval_mode
 
     @write_at_interval.setter
-    def write_at_interval(self, mode: _Mode | OnChange) -> None:
-        if mode is not ALWAYS and mode is not OFF and not isinstance(mode, OnChange):
-            raise TypeError("write_at_interval is ALWAYS, OFF or OnChange(delta)")
+    def write_at_interval(self, mode: _Mode | IfChanged) -> None:
+        if mode is not ALWAYS and mode is not OFF and not isinstance(mode, IfChanged):
+            raise TypeError("write_at_interval is ALWAYS, OFF or IfChanged(delta)")
         self._interval_mode = mode
-        if isinstance(mode, OnChange):
+        if isinstance(mode, IfChanged):
             self._ensure_reporting().interval_delta = float(mode.delta)
         self._drop_unused_reporting()
 

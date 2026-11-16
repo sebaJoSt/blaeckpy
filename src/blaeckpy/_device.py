@@ -14,7 +14,7 @@ from ._clock import TimestampMode
 from ._events import Button, Event
 from ._properties import (Category, Mode, NumberInput, Presentation, Select, Sensor, StateClass, Switch,
                           TextInput, check_host_name)
-from ._signal import ALWAYS, OnChange, Signal, _Mode, check_name, check_text, check_unit, changed, type_and_value
+from ._signal import ALWAYS, IfChanged, Signal, _Mode, check_name, check_text, check_unit, changed, type_and_value
 from .protocol import frames
 from .protocol.schema_hash import schema_hash
 
@@ -50,7 +50,7 @@ class _DeviceBase:
 
     def add_signal[T: (bool, int, float, str)](
             self, name: str, type_or_initial: type[T] | T, initial: T | None = None, *,
-            unit: str | None = None, write_at_interval: _Mode | OnChange = ALWAYS,
+            unit: str | None = None, write_at_interval: _Mode | IfChanged = ALWAYS,
             write_on_change: float | None = None, min_interval_ms: int = 100) -> Signal[T]:
         """A value the device logs: ``add_signal("T", float)``, ``add_signal("T", float, 21.5)``
         or ``add_signal("T", 21.5)``. ``unit`` in Home Assistant's spelling, such as "°C"."""
@@ -1052,7 +1052,7 @@ class Blaeck(_DeviceBase):
         for s in self._signals:
             r = s._reporting
             interval = due and (s._interval_mode is ALWAYS or (
-                isinstance(s._interval_mode, OnChange) and r is not None
+                isinstance(s._interval_mode, IfChanged) and r is not None
                 and (initial or changed(s.type, s.value, r, r.interval_delta))))
             immediate = (r is not None and r.immediate
                          and (not r.valid or change_now - r.last_write_ms >= r.min_interval_ms)

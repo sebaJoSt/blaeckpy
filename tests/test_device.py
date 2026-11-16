@@ -2,7 +2,7 @@
 
 import pytest
 
-from blaeckpy import ANY_CHANGE, Blaeck, OnChange
+from blaeckpy import ANY_CHANGE, Blaeck, IfChanged
 
 
 class Port:
@@ -83,7 +83,7 @@ def test_begin_takes_an_opened_port_once():
 def test_policies_are_checked():
     with pytest.raises(TypeError):
         Blaeck().add_signal("S", float, write_at_interval="always")
-    Blaeck().add_signal("S", float, write_at_interval=OnChange(0.5), write_on_change=ANY_CHANGE)
+    Blaeck().add_signal("S", float, write_at_interval=IfChanged(0.5), write_on_change=ANY_CHANGE)
 
 
 def test_callbacks_work_as_decorator_and_as_call():
@@ -109,7 +109,7 @@ def test_a_change_threshold_is_0_or_above_and_finite(delta):
     with pytest.raises(ValueError):
         Blaeck().add_signal("T", int, write_on_change=delta)
     with pytest.raises(ValueError):
-        OnChange(delta)
+        IfChanged(delta)
     with pytest.raises(ValueError):
         Blaeck().add_number_input("N", 0.0, write_on_change=delta)
     with pytest.raises(ValueError):

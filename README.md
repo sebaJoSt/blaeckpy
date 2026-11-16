@@ -91,7 +91,7 @@ Signals, inputs, sensors, events, buttons and commands can also be declared on a
 | blaeckpy | What it is |
 |---|---|
 | `add_signal(name, float)` | A value to log; `.value` |
-| `write_at_interval=ALWAYS / OFF / OnChange(0.5)`, `write_on_change=0.5`, `min_interval_ms=` | When a signal is sent |
+| `write_at_interval=ALWAYS / OFF / IfChanged(0.5)`, `write_on_change=0.5`, `min_interval_ms=` | When a signal is sent |
 | `add_number_input(name, 20.0, min=, max=, step=)`, `add_text_input`, `add_switch`, `add_select(name, 0, options=[...])` | Controls Home Assistant lets the user operate; `.value`, `@input.on_change` |
 | `add_sensor(name, signal)`, `add_sensor(name, 21.5)`, `add_sensor(name, float, get=fn)`, `add_sensor(name, 0, options=[...])` | Values Home Assistant shows but the user can't set |
 | `add_event(name, [types])`, `event.write(type)` | Occurrences, such as a doorbell |

@@ -7,7 +7,7 @@
     {"name": "Counter", "type": "int", "value": 9007199254740993},
     {"name": "Status", "type": "str", "value": "Idle"},
     {"name": "Door", "type": "bool", "value": false, "write_at_interval": "off", "write_on_change": "any", "min_interval_ms": 0},
-    {"name": "Pressure", "type": "float", "value": 1.0, "unit": "hPa", "write_at_interval": {"on_change": 0.5}},
+    {"name": "Pressure", "type": "float", "value": 1.0, "unit": "hPa", "write_at_interval": {"if_changed": 0.5}},
     {"name": "Level", "type": "int", "value": 10, "write_on_change": 5, "min_interval_ms": 1000}
   ],
   "steps": [

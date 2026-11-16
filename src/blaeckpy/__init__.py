@@ -7,10 +7,10 @@ from ._clock import TimestampMode
 from ._device import Blaeck, SubDevice
 from ._events import Button, Event
 from ._properties import Category, Mode, NumberInput, Select, Sensor, StateClass, Switch, TextInput
-from ._signal import ALWAYS, ANY_CHANGE, OFF, OnChange, Signal
+from ._signal import ALWAYS, ANY_CHANGE, OFF, IfChanged, Signal
 
 __version__ = _version("blaeckpy")
 
-__all__ = ["ALWAYS", "ANY_CHANGE", "Blaeck", "Button", "Category", "Event", "Mode", "NumberInput",
-           "OFF", "OnChange", "Select", "Sensor", "Signal", "StateClass", "SubDevice", "Switch",
+__all__ = ["ALWAYS", "ANY_CHANGE", "Blaeck", "Button", "Category", "Event", "IfChanged", "Mode",
+           "NumberInput", "OFF", "Select", "Sensor", "Signal", "StateClass", "SubDevice", "Switch",
            "TextInput", "TimestampMode", "__version__"]

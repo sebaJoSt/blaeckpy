@@ -1,7 +1,7 @@
 """Four signals get the same value every 100 ms; only how they report it differs:
 
     Interval            every host interval, changed or not (the default)
-    OnChangeAtInterval  at the host interval, if it changed by at least 0.01
+    IfChangedAtInterval at the host interval, if it changed by at least 0.01
     OnChange            as soon as it changes by at least 0.01; needs no interval
     Explicit            .write() sends every value
 
@@ -12,10 +12,10 @@ The value is a 12-second sine wave around 1.8 V, in a 36-second pattern:
     12-30 s  flat, flickering by one 10-bit ADC step (5 V / 1024, about 0.005)
     30-36 s  fades back in
 
-Try this: set the host's logging interval to 2000 ms. Interval and OnChangeAtInterval only
+Try this: set the host's logging interval to 2000 ms. Interval and IfChangedAtInterval only
 check every 2 s, so they can miss the spikes; OnChange and Explicit catch them. While flat, the
-flicker stays below 0.01: OnChangeAtInterval and OnChange go quiet, while Interval and Explicit
-keep sending. Stop the interval: only Interval and OnChangeAtInterval stop.
+flicker stays below 0.01: IfChangedAtInterval and OnChange go quiet, while Interval and Explicit
+keep sending. Stop the interval: only Interval and IfChangedAtInterval stop.
 """
 
 import math
@@ -23,12 +23,12 @@ import random
 import socket
 import time
 
-from blaeckpy import OFF, Blaeck, OnChange
+from blaeckpy import OFF, Blaeck, IfChanged
 
 device = Blaeck("WriteModes", fw_version="1.0")
 interval = device.add_signal("Interval", float)
-on_change_at_interval = device.add_signal("OnChangeAtInterval", float,
-                                          write_at_interval=OnChange(0.01))
+if_changed_at_interval = device.add_signal("IfChangedAtInterval", float,
+                                           write_at_interval=IfChanged(0.01))
 on_change = device.add_signal("OnChange", float, write_at_interval=OFF, write_on_change=0.01,
                               min_interval_ms=0)
 explicit = device.add_signal("Explicit", float, write_at_interval=OFF)
@@ -56,6 +56,6 @@ print("##LOGGBOK:READY##")  # Sentinel for Loggbok's process launcher — safe t
 start = time.monotonic()
 while True:
     value = value_at(int((time.monotonic() - start) * 1000) % 36000)
-    interval.value = on_change_at_interval.value = on_change.value = value
+    interval.value = if_changed_at_interval.value = on_change.value = value
     explicit.write(value)
     device.tick(timeout=0.1)
